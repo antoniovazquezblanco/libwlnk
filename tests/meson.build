@@ -70,6 +70,15 @@ test('wlnk_nl_test',
     dependencies: [wlnk_dep.partial_dependency(includes: true), cmocka_dep,
       nl_deps]))
 
+# Radio tests
+wlnk_test_sysfs = (meson.current_build_dir() / 'sysfs').replace('\\', '/')
+test('wlnk_radio_test',
+  executable(
+    'wlnk_radio_test', 'radio_test.c', files('../src/radio.c'),
+    c_args: '-DWLNK_SYSFS="@0@"'.format(wlnk_test_sysfs),
+    objects: wlnk_lib.extract_objects('err.c'),
+    dependencies: [wlnk_dep.partial_dependency(includes: true), cmocka_dep]))
+
 # Version tests
 test('wlnk_version_test',
   executable(
