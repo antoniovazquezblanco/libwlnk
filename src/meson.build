@@ -26,6 +26,7 @@ wlnk_src = files(
   'err.c',
   'iface.c',
   'link.c',
+  'lock.c',
   'nl.c',
   'radio.c',
   'version.c',

@@ -62,6 +62,15 @@ test('wlnk_link_test',
     objects: wlnk_lib.extract_objects('link.c', 'err.c'),
     dependencies: [wlnk_dep.partial_dependency(includes: true), cmocka_dep]))
 
+# Lock tests
+wlnk_test_rundir = (meson.current_build_dir() / 'rundir').replace('\\', '/')
+test('wlnk_lock_test',
+  executable(
+    'wlnk_lock_test', 'lock_test.c', files('../src/lock.c'),
+    c_args: '-DWLNK_RUNDIR="@0@"'.format(wlnk_test_rundir),
+    objects: wlnk_lib.extract_objects('err.c'),
+    dependencies: [wlnk_dep.partial_dependency(includes: true), cmocka_dep]))
+
 # Netlink tests
 test('wlnk_nl_test',
   executable(
