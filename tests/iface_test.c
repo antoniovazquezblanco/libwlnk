@@ -30,6 +30,9 @@
 #define UNKNOWN "unknown"
 #define N(a)    (sizeof(a) / sizeof((a)[0]))
 
+/** An interface name no machine has. */
+#define ABSENT "wlnk-absent0"
+
 /** Every capability bit the header defines. */
 #define ALL_CAPS ((WLNK_CAP_BAND_60GHZ << 1) - 1)
 /** The band bits. */
@@ -198,6 +201,83 @@ static void test_list_reports_interfaces(void **state)
     wlnk_iface_free(ifaces);
 }
 
+/**
+ * @brief Whether an interface was zeroed.
+ * @param d Interface to check.
+ * @return Whether every byte is 0.
+ */
+static bool is_zero(const wlnk_iface_t *d)
+{
+    static const wlnk_iface_t zero;
+    return memcmp(d, &zero, sizeof(*d)) == 0;
+}
+
+/** Missing arguments are refused, and the output that was given is
+ * zeroed. */
+static void test_info_needs_arguments(void **state)
+{
+    (void)state;
+    wlnk_iface_t d;
+
+    memset(&d, 0xA5, sizeof(d));
+    assert_int_equal(wlnk_iface_info(NULL, &d), WLNK_E_INVALID_ARG);
+    assert_true(is_zero(&d));
+    assert_true(wlnk_err_msg()[0] != '\0');
+    assert_int_equal(wlnk_iface_info("wlan0", NULL), WLNK_E_INVALID_ARG);
+}
+
+/** A name no machine has is not found, before nl80211 is even asked. */
+static void test_info_unknown_name(void **state)
+{
+    (void)state;
+    wlnk_iface_t d;
+
+    memset(&d, 0xA5, sizeof(d));
+    assert_int_equal(wlnk_iface_info(ABSENT, &d), WLNK_E_NOT_FOUND);
+    assert_true(is_zero(&d));
+}
+
+/** The loopback interface exists but is not wireless. */
+static void test_info_not_wireless(void **state)
+{
+    (void)state;
+    wlnk_iface_t d;
+
+    memset(&d, 0xA5, sizeof(d));
+    assert_int_equal(wlnk_iface_info("lo", &d), WLNK_E_NOT_FOUND);
+    assert_true(is_zero(&d));
+}
+
+/** Each listed interface, asked for by name, is the same row. The channel
+ * is left out: on a live machine it may change between the two calls. */
+static void test_info_matches_list(void **state)
+{
+    (void)state;
+    bool required = getenv("WLNK_TEST_NL80211") != NULL;
+    wlnk_iface_t *ifaces = NULL;
+    size_t n = 0;
+
+    int rc = wlnk_iface_list(&ifaces, &n);
+    if ((rc == WLNK_E_NOT_FOUND && !required) || (rc == WLNK_OK && n == 0))
+        skip();
+    if (rc != WLNK_OK)
+        fail_msg("%s: %s", wlnk_strerr(rc), wlnk_err_msg());
+    for (size_t i = 0; i < n; i++) {
+        const wlnk_iface_t *row = &ifaces[i];
+        wlnk_iface_t d;
+        rc = wlnk_iface_info(row->ifname, &d);
+        if (rc != WLNK_OK)
+            fail_msg("%s: %s: %s", row->ifname, wlnk_strerr(rc),
+                     wlnk_err_msg());
+        assert_string_equal(d.ifname, row->ifname);
+        assert_memory_equal(d.mac, row->mac, sizeof(d.mac));
+        assert_int_equal(d.wiphy, row->wiphy);
+        assert_int_equal(d.kind, row->kind);
+        assert_memory_equal(&d.radio, &row->radio, sizeof(d.radio));
+    }
+    wlnk_iface_free(ifaces);
+}
+
 int main(void)
 {
     const struct CMUnitTest tests[] = {
@@ -209,6 +289,10 @@ int main(void)
         cmocka_unit_test(test_list_needs_outputs),
         cmocka_unit_test(test_free_null),
         cmocka_unit_test(test_list_reports_interfaces),
+        cmocka_unit_test(test_info_needs_arguments),
+        cmocka_unit_test(test_info_unknown_name),
+        cmocka_unit_test(test_info_not_wireless),
+        cmocka_unit_test(test_info_matches_list),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

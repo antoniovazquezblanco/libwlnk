@@ -7,6 +7,7 @@
  */
 
 #include <linux/version.h>
+#include <net/if.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,10 @@
 
 #include "err_internal.h"
 #include "nl.h"
+
+/* Interface names cross the API in WLNK_IFNAME_MAX buffers, so they must
+ * hold any name the kernel accepts. */
+_Static_assert(WLNK_IFNAME_MAX == IFNAMSIZ, "WLNK_IFNAME_MAX is IFNAMSIZ");
 
 #define UNKNOWN "unknown"
 
@@ -447,4 +452,40 @@ int wlnk_iface_list(wlnk_iface_t **out, size_t *n)
 void wlnk_iface_free(wlnk_iface_t *ifaces)
 {
     free(ifaces);
+}
+
+int wlnk_iface_info(const char *ifname, wlnk_iface_t *out)
+{
+    if (out != NULL)
+        memset(out, 0, sizeof(*out));
+    if (ifname == NULL || out == NULL)
+        return wlnk_fail(WLNK_E_INVALID_ARG, 0,
+                         "info: no interface name or output");
+
+    unsigned int idx = if_nametoindex(ifname);
+    if (idx == 0)
+        return wlnk_fail(WLNK_E_NOT_FOUND, 0, "info: no such interface");
+
+    wlnk_nl_t *nl = NULL;
+    int rc = wlnk_nl_open(&nl);
+    if (rc != WLNK_OK)
+        return rc;
+
+    /* The same requests a list row is built from, for one index. */
+    struct list_ctx c = {0};
+    struct nl_msg *msg = wlnk_nl_msg(nl, NL80211_CMD_GET_INTERFACE, false);
+    if (msg != NULL && nla_put_u32(msg, NL80211_ATTR_IFINDEX, idx) != 0) {
+        nlmsg_free(msg);
+        msg = NULL;
+    }
+    rc = wlnk_nl_run(nl, msg, on_iface, &c, "get interface");
+    if (rc == WLNK_OK)
+        rc = fill_radios(nl, c.rows, &c.n);
+    wlnk_nl_close(&nl);
+    if (rc == WLNK_OK && c.n == 0)
+        rc = wlnk_fail(WLNK_E_NOT_FOUND, 0, "info: not a wireless interface");
+    if (rc == WLNK_OK)
+        *out = c.rows[0];
+    free(c.rows);
+    return rc == WLNK_OK ? wlnk_ok() : rc;
 }

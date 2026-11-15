@@ -29,6 +29,7 @@ const wlnk_fn wlnk_cxx_fns[] = {
     reinterpret_cast<wlnk_fn>(&wlnk_freq_flag_str),
     reinterpret_cast<wlnk_fn>(&wlnk_iface_list),
     reinterpret_cast<wlnk_fn>(&wlnk_iface_free),
+    reinterpret_cast<wlnk_fn>(&wlnk_iface_info),
     reinterpret_cast<wlnk_fn>(&wlnk_version),
     reinterpret_cast<wlnk_fn>(&wlnk_version_string),
 };

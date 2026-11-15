@@ -191,6 +191,16 @@ WLNK_API int wlnk_iface_list(wlnk_iface_t **out, size_t *n);
  */
 WLNK_API void wlnk_iface_free(wlnk_iface_t *ifaces);
 
+/**
+ * @brief One wireless network interface by name, as wlnk_iface_list()
+ * reports it. Needs no privileges.
+ * @param ifname Interface name.
+ * @param out Receives the interface; zeroed on failure.
+ * @return WLNK_OK; WLNK_E_NOT_FOUND when there is no such wireless
+ * interface, or the kernel has no nl80211.
+ */
+WLNK_API int wlnk_iface_info(const char *ifname, wlnk_iface_t *out);
+
 #ifdef __cplusplus
 }
 #endif
