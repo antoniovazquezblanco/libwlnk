@@ -1,0 +1,15 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 80
+BreakBeforeBraces: Linux
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AlignConsecutiveMacros: AcrossComments
+AlignTrailingComments: true
+IndentCaseLabels: false
+PointerAlignment: Right
+SpaceAfterCStyleCast: false
+# cmocka needs <stdarg.h>, <stddef.h>, <setjmp.h> before <cmocka.h>.
+SortIncludes: Never
