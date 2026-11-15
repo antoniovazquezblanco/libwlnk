@@ -22,6 +22,7 @@ jobs:
           - { cc: clang, config: sanitize, extra: '-Db_sanitize=address,undefined -Db_lundef=false' }
     env:
       CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cc == 'clang' && 'clang++' || 'g++' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5

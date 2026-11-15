@@ -19,6 +19,15 @@ if host_machine.system() == 'linux' and get_option('default_library') != 'static
     args: [files('abi_exports.py'), nm.full_path(), wlnk_shared_lib, wlnk_headers])
 endif
 
+# C++ headers
+if add_languages('cpp', required: false, native: false)
+  test('wlnk_cxx_headers_test',
+    executable(
+      'wlnk_cxx_headers_test', 'cxx_headers_test.cpp',
+      dependencies: wlnk_dep,
+      override_options: ['cpp_std=c++11']))
+endif
+
 # Error tests
 test('wlnk_err_test',
   executable(
