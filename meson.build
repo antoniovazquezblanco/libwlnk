@@ -11,6 +11,10 @@ project('libwlnk', 'c',
     'default_library=both',
   ])
 
+if host_machine.system() != 'linux'
+  error('libwlnk only builds for Linux, not ' + host_machine.system())
+endif
+
 meson.add_dist_script('meson_version.sh', '--dist', meson.project_version())
 
 cc = meson.get_compiler('c')
