@@ -81,3 +81,12 @@ test('wlnk_version_test',
       '-DWLNK_TEST_VERSION_PATCH=@0@'.format(wlnk_version_parts[2].to_int()),
     ],
     dependencies: wlnk_test_deps))
+
+# Virtual interface tests
+test('wlnk_vif_test',
+  executable(
+    'wlnk_vif_test', 'vif_test.c',
+    objects: wlnk_lib.extract_objects('vif.c', 'link.c', 'nl.c', 'iface.c',
+      'err.c'),
+    dependencies: [wlnk_dep.partial_dependency(includes: true), cmocka_dep,
+      nl_deps]))

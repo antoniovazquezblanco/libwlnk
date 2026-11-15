@@ -28,6 +28,7 @@ wlnk_src = files(
   'link.c',
   'nl.c',
   'version.c',
+  'vif.c',
 )
 
 wlnk_lib = library('wlnk', wlnk_src,
