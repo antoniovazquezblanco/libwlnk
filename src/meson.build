@@ -22,6 +22,7 @@ nl_deps = [dependency('libnl-3.0'), dependency('libnl-genl-3.0')]
 
 # Library
 wlnk_src = files(
+  'chandef.c',
   'err.c',
   'iface.c',
   'nl.c',

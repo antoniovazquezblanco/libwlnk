@@ -28,6 +28,13 @@ if add_languages('cpp', required: false, native: false)
       override_options: ['cpp_std=c++11']))
 endif
 
+# Channel tests
+test('wlnk_chandef_test',
+  executable(
+    'wlnk_chandef_test', 'chandef_test.c',
+    objects: wlnk_lib.extract_objects('chandef.c'),
+    dependencies: [wlnk_dep.partial_dependency(includes: true), cmocka_dep]))
+
 # Error tests
 test('wlnk_err_test',
   executable(
