@@ -55,6 +55,13 @@ test('wlnk_iface_test',
     'wlnk_iface_test', 'iface_test.c',
     dependencies: wlnk_test_deps))
 
+# Link tests
+test('wlnk_link_test',
+  executable(
+    'wlnk_link_test', 'link_test.c',
+    objects: wlnk_lib.extract_objects('link.c', 'err.c'),
+    dependencies: [wlnk_dep.partial_dependency(includes: true), cmocka_dep]))
+
 # Netlink tests
 test('wlnk_nl_test',
   executable(
