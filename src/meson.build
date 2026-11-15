@@ -35,4 +35,9 @@ wlnk_dep = declare_dependency(
   include_directories: include_directories('.'))
 
 # Installation
-install_headers('api.h', 'err.h', 'version.h', subdir: 'wlnk')
+wlnk_headers = files(
+  'api.h',
+  'err.h',
+  'version.h',
+)
+install_headers(wlnk_headers, subdir: 'wlnk')
