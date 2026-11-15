@@ -16,10 +16,16 @@
 extern "C" {
 #endif
 
-/* (major << 16) | (minor << 8) | patch. */
+/**
+ * @brief Numeric version of the loaded library.
+ * @return (major << 16) | (minor << 8) | patch.
+ */
 WLNK_API uint32_t wlnk_version(void);
 
-/* Full version, including any pre-release or build metadata. */
+/**
+ * @brief Full version of the loaded library.
+ * @return Version string, including any pre-release or build metadata.
+ */
 WLNK_API const char *wlnk_version_string(void);
 
 #ifdef __cplusplus
