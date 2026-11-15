@@ -191,6 +191,74 @@ static void test_callback_stops_run(void **state)
     wlnk_nl_close(&h);
 }
 
+/** A stopped request leaves nothing behind: the kernel's acknowledgement is
+ * read, so the next request on the same handle gets its own reply. */
+static void test_reusable_after_stop(void **state)
+{
+    (void)state;
+    wlnk_nl_t *h = open_or_skip();
+    int n = 0;
+
+    struct nl_msg *msg =
+        wlnk_nl_msg(h, NL80211_CMD_GET_PROTOCOL_FEATURES, false);
+    assert_int_equal(wlnk_nl_run(h, msg, stop_busy, NULL, "stop"), WLNK_E_BUSY);
+
+    msg = wlnk_nl_msg(h, NL80211_CMD_GET_PROTOCOL_FEATURES, false);
+    assert_int_equal(
+        wlnk_nl_run(h, msg, count_features, &n, "get protocol features"),
+        WLNK_OK);
+    assert_int_equal(n, 1);
+    wlnk_nl_close(&h);
+}
+
+/**
+ * @brief Count every reply.
+ * @param attrs Parsed reply, unused.
+ * @param user Counter to increment.
+ * @return WLNK_OK.
+ */
+static int count_all(wlnk_nl_attrs_t attrs, void *user)
+{
+    (void)attrs;
+    int *n = user;
+    (*n)++;
+    return WLNK_OK;
+}
+
+/**
+ * @brief Dump every radio, counting the replies.
+ * @param h Open handle.
+ * @param cb Reply callback.
+ * @param n Counter for @p cb.
+ * @return wlnk_nl_run()'s result.
+ */
+static int dump_wiphys(wlnk_nl_t *h, wlnk_nl_cb cb, int *n)
+{
+    struct nl_msg *msg = wlnk_nl_msg(h, NL80211_CMD_GET_WIPHY, true);
+    return wlnk_nl_run(h, msg, cb, n, "get wiphy");
+}
+
+/** A dump stopped at its first reply drops the rest, so the same handle
+ * dumps every radio again. Needs two radios (CI's simulated ones) and skips
+ * without them. */
+static void test_dump_reusable_after_stop(void **state)
+{
+    (void)state;
+    wlnk_nl_t *h = open_or_skip();
+    int all = 0;
+    int again = 0;
+
+    assert_int_equal(dump_wiphys(h, count_all, &all), WLNK_OK);
+    if (all < 2) {
+        wlnk_nl_close(&h);
+        skip();
+    }
+    assert_int_equal(dump_wiphys(h, stop_busy, NULL), WLNK_E_BUSY);
+    assert_int_equal(dump_wiphys(h, count_all, &again), WLNK_OK);
+    assert_int_equal(again, all);
+    wlnk_nl_close(&h);
+}
+
 /** A kernel refusal keeps its errno: an interface index that does not
  * exist is ENODEV, reported as not found. */
 static void test_kernel_refusal(void **state)
@@ -221,6 +289,8 @@ int main(void)
         cmocka_unit_test(test_run_delivers_replies),
         cmocka_unit_test(test_callback_stops_run),
         cmocka_unit_test(test_kernel_refusal),
+        cmocka_unit_test(test_reusable_after_stop),
+        cmocka_unit_test(test_dump_reusable_after_stop),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

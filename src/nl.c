@@ -165,9 +165,12 @@ struct run_state {
     wlnk_nl_cb cb;
     /** Passed to cb. */
     void *user;
-    /** Set once no further reply can change the outcome. */
+    /** Set once the exchange is over: its last message read, or the
+     * transport failed. */
     bool done;
-    /** The wlnk status, once done. */
+    /** Set once cb stopped; later replies are read and dropped. */
+    bool stopped;
+    /** The wlnk status, once done; cb's status once stopped. */
     int status;
     /** errno reported by the kernel, 0 if none. */
     int syserrno;
@@ -187,6 +190,8 @@ static int on_error(struct sockaddr_nl *nla, struct nlmsgerr *nlerr, void *arg)
     (void)nla;
     struct run_state *st = arg;
     st->done = true;
+    if (st->stopped)
+        return NL_STOP;
     st->syserrno = nlerr->error < 0 ? -nlerr->error : nlerr->error;
     switch (st->syserrno) {
     case EPERM:
@@ -229,7 +234,8 @@ static int on_finish(struct nl_msg *msg, void *arg)
     struct run_state *st = arg;
     if (!st->done) {
         st->done = true;
-        st->status = WLNK_OK;
+        if (!st->stopped)
+            st->status = WLNK_OK;
     }
     return NL_SKIP;
 }
@@ -246,7 +252,8 @@ static int on_ack(struct nl_msg *msg, void *arg)
     struct run_state *st = arg;
     if (!st->done) {
         st->done = true;
-        st->status = WLNK_OK;
+        if (!st->stopped)
+            st->status = WLNK_OK;
     }
     return NL_STOP;
 }
@@ -255,12 +262,12 @@ static int on_ack(struct nl_msg *msg, void *arg)
  * @brief libnl valid callback: one reply, parsed and handed to the caller.
  * @param msg The reply.
  * @param arg The exchange's run_state.
- * @return NL_SKIP to go on, NL_STOP when the caller's callback stopped.
+ * @return NL_SKIP: the exchange is read to its end even after a stop.
  */
 static int on_valid(struct nl_msg *msg, void *arg)
 {
     struct run_state *st = arg;
-    if (st->cb == NULL)
+    if (st->cb == NULL || st->stopped)
         return NL_SKIP;
 
     struct genlmsghdr *gnlh = nlmsg_data(nlmsg_hdr(msg));
@@ -271,9 +278,10 @@ static int on_valid(struct nl_msg *msg, void *arg)
 
     int rc = st->cb(attrs, st->user);
     if (rc != WLNK_OK) {
-        st->done = true;
+        /* Stop delivering but keep reading: what the kernel already sent
+         * would otherwise reach the next request on this socket. */
+        st->stopped = true;
         st->status = rc;
-        return NL_STOP;
     }
     return NL_SKIP;
 }
@@ -357,8 +365,10 @@ int wlnk_nl_run(wlnk_nl_t *h, struct nl_msg *msg, wlnk_nl_cb cb, void *user,
             /* libnl reports its own negative NLE_* codes here, never
              * errno; a signal is not retried, so the caller sees it. */
             st.done = true;
-            st.status = wlnk_nle_status(rc);
-            st.nle = rc;
+            if (!st.stopped) {
+                st.status = wlnk_nle_status(rc);
+                st.nle = rc;
+            }
         }
     }
     nl_cb_put(nlcb);

@@ -25,8 +25,9 @@ typedef struct nlattr *wlnk_nl_attrs_t[NL80211_ATTR_MAX + 1];
  * @brief Called once per reply message.
  * @param attrs Parsed attributes of the reply.
  * @param user User data given to wlnk_nl_run().
- * @return WLNK_OK to go on; any other status stops the exchange and becomes
- * wlnk_nl_run()'s result.
+ * @return WLNK_OK to go on; any other status stops the delivery and becomes
+ * wlnk_nl_run()'s result. The rest of the exchange is still read and dropped,
+ * so the handle stays usable.
  */
 typedef int (*wlnk_nl_cb)(wlnk_nl_attrs_t attrs, void *user);
 
