@@ -34,3 +34,17 @@ jobs:
             xargs reuse lint-file
       - name: REUSE compliance
         run: reuse lint
+
+  scripts:
+    name: Scripts
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          git ls-files '*.sh' | xargs shellcheck
+      - name: Python syntax
+        run: git ls-files '*.py' | xargs -I{} python3 -m py_compile {}
