@@ -13,10 +13,10 @@
 #include "iface.h"
 #include "version.h"
 
-/* void (*)(void) is the cast target -Wcast-function-type accepts. */
+/** void (*)(void) is the cast target -Wcast-function-type accepts. */
 using wlnk_fn = void (*)();
 
-/* External linkage keeps the table, and its symbol references, in the
+/** External linkage keeps the table, and its symbol references, in the
  * object even though nothing reads it. Add new public functions here. */
 extern const wlnk_fn wlnk_cxx_fns[];
 const wlnk_fn wlnk_cxx_fns[] = {

@@ -24,7 +24,7 @@
 
 #include "err_internal.h"
 
-/* Success clears what an earlier failure left. */
+/** Success clears what an earlier failure left. */
 static void test_ok_clears(void **state)
 {
     (void)state;
@@ -34,7 +34,7 @@ static void test_ok_clears(void **state)
     assert_string_equal(wlnk_err_msg(), "");
 }
 
-/* Failure returns the status and records errno and message. */
+/** Failure returns the status and records errno and message. */
 static void test_fail_records(void **state)
 {
     (void)state;
@@ -43,7 +43,7 @@ static void test_fail_records(void **state)
     assert_string_equal(wlnk_err_msg(), "nl80211: no device");
 }
 
-/* A failure replaces every part of an earlier one: a NULL message leaves
+/** A failure replaces every part of an earlier one: a NULL message leaves
  * msg empty and no errno leaves 0, never stale values. */
 static void test_fail_replaces(void **state)
 {
@@ -54,7 +54,7 @@ static void test_fail_replaces(void **state)
     assert_string_equal(wlnk_err_msg(), "");
 }
 
-/* Long messages are truncated and stay NUL-terminated. */
+/** Long messages are truncated and stay NUL-terminated. */
 static void test_fail_truncates(void **state)
 {
     (void)state;
@@ -68,7 +68,7 @@ static void test_fail_truncates(void **state)
                      0);
 }
 
-/* A system failure keeps the errno and puts its text after the step, so
+/** A system failure keeps the errno and puts its text after the step, so
  * the status message followed by msg shows the cause. */
 static void test_fail_sys_appends_text(void **state)
 {
@@ -85,7 +85,7 @@ static void test_fail_sys_appends_text(void **state)
     assert_string_equal(wlnk_err_msg(), want);
 }
 
-/* With no errno there is no system text: msg is the step alone. */
+/** With no errno there is no system text: msg is the step alone. */
 static void test_fail_sys_without_errno(void **state)
 {
     (void)state;
@@ -94,7 +94,7 @@ static void test_fail_sys_without_errno(void **state)
     assert_string_equal(wlnk_err_msg(), "claim: read record");
 }
 
-/* Refusals are WLNK_E_PERM, everything else an I/O error. */
+/** Refusals are WLNK_E_PERM, everything else an I/O error. */
 static void test_errno_status(void **state)
 {
     (void)state;
@@ -104,7 +104,7 @@ static void test_errno_status(void **state)
     assert_int_equal(wlnk_errno_status(EIO), WLNK_E_IO);
 }
 
-/* The text always fits its buffer, even for an errno with no name. */
+/** The text always fits its buffer, even for an errno with no name. */
 static void test_errno_text_fits(void **state)
 {
     (void)state;
@@ -118,7 +118,7 @@ static void test_errno_text_fits(void **state)
     assert_string_equal(wlnk_errno_text(EACCES, buf, 0), "");
 }
 
-/* What another thread sees, recorded there and checked here. */
+/** What another thread sees, recorded there and checked here. */
 struct seen {
     int syserrno;
     char msg[WLNK_ERR_MSG_MAX];
@@ -135,7 +135,7 @@ static void *other_thread(void *arg)
     return NULL;
 }
 
-/* Each thread has its own detail: neither sees the other's failure. */
+/** Each thread has its own detail: neither sees the other's failure. */
 static void test_detail_is_per_thread(void **state)
 {
     (void)state;

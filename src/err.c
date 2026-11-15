@@ -47,7 +47,7 @@ const char *wlnk_strerr(int status)
     }
 }
 
-/* This thread's detail: the outcome of its last call that returns a status. */
+/** This thread's detail, from its last call that returns a status. */
 static _Thread_local struct {
     int syserrno;
     char msg[WLNK_ERR_MSG_MAX];

@@ -17,7 +17,7 @@
 
 #define FALLBACK "unknown status"
 
-/* Every documented code. They are contiguous from WLNK_OK (0), which
+/** Every documented code. They are contiguous from WLNK_OK (0), which
  * test_list_is_complete relies on. */
 static const int codes[] = {
     WLNK_OK,
@@ -36,14 +36,14 @@ static const int codes[] = {
 };
 #define N_CODES (sizeof(codes) / sizeof(codes[0]))
 
-/* WLNK_OK is 0, as documented in err.h. */
+/** WLNK_OK is 0, as documented in err.h. */
 static void test_ok_is_zero(void **state)
 {
     (void)state;
     assert_int_equal(WLNK_OK, 0);
 }
 
-/* Every code has a real message, never the fallback. */
+/** Every code has a real message, never the fallback. */
 static void test_codes_have_messages(void **state)
 {
     (void)state;
@@ -55,7 +55,7 @@ static void test_codes_have_messages(void **state)
     }
 }
 
-/* Messages are distinct, so a message identifies its code. */
+/** Messages are distinct, so a message identifies its code. */
 static void test_messages_are_distinct(void **state)
 {
     (void)state;
@@ -65,7 +65,7 @@ static void test_messages_are_distinct(void **state)
                                     wlnk_strerr(codes[j]));
 }
 
-/* The first value past the list has no message: a new status code fails
+/** The first value past the list has no message: a new status code fails
  * here until it is added to the list above. */
 static void test_list_is_complete(void **state)
 {
@@ -73,7 +73,7 @@ static void test_list_is_complete(void **state)
     assert_string_equal(wlnk_strerr((int)N_CODES), FALLBACK);
 }
 
-/* The messages are part of the contract, so each is pinned: a rewording
+/** The messages are part of the contract, so each is pinned: a rewording
  * fails here until it is made on purpose. In the order of codes[]. */
 static const char *const texts[] = {
     "success",
@@ -99,7 +99,7 @@ static void test_messages_are_pinned(void **state)
         assert_string_equal(wlnk_strerr(codes[i]), texts[i]);
 }
 
-/* A message is read by the person running the consumer, so it is complete
+/** A message is read by the person running the consumer, so it is complete
  * on its own: it never points at a function, a field or "the detail". */
 static void test_messages_are_for_people(void **state)
 {
@@ -114,7 +114,7 @@ static void test_messages_are_for_people(void **state)
                          programmer_words[w]);
 }
 
-/* Unknown values map to the stable fallback; wlnk_strerr never fails. */
+/** Unknown values map to the stable fallback; wlnk_strerr never fails. */
 static void test_unknown_values(void **state)
 {
     (void)state;

@@ -26,7 +26,7 @@ static void test_string_is_project_version(void **state)
     assert_string_equal(wlnk_version_string(), WLNK_TEST_VERSION_STRING);
 }
 
-/* Layout documented in version.h. */
+/** Layout documented in version.h. */
 static void test_number_layout(void **state)
 {
     (void)state;

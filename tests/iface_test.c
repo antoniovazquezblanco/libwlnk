@@ -30,7 +30,7 @@ struct named {
     const char *name;
 };
 
-/* Each table holds every value its header defines, in order: enum values
+/** Each table holds every value its header defines, in order: enum values
  * from 0, or mask bits from bit 0. Either way the next value is the first
  * one a header could add. */
 static const struct named kinds[] = {
@@ -65,7 +65,7 @@ static const struct named freq_flags[] = {
     {WLNK_FREQ_RADAR, "radar"},
 };
 
-/* Every value in the table has its pinned name, the names are distinct,
+/** Every value in the table has its pinned name, the names are distinct,
  * and the first value past the table has none. */
 static void check_table(namer_t name, const struct named *t, size_t n,
                         bool bits)
@@ -106,7 +106,7 @@ static void test_freq_flag_names(void **state)
     check_table(wlnk_freq_flag_str, freq_flags, N(freq_flags), true);
 }
 
-/* The bit helpers name one bit: nothing, or several at once, is not one. */
+/** The bit helpers name one bit: nothing, or several at once, is not one. */
 static void test_bit_helpers_name_one_bit(void **state)
 {
     (void)state;
