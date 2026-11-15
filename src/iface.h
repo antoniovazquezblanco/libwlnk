@@ -147,6 +147,16 @@ typedef struct wlnk_caps {
  */
 WLNK_API const char *wlnk_freq_flag_str(uint32_t flag);
 
+/**
+ * @brief One frequency a radio supports.
+ */
+typedef struct wlnk_freq {
+    /** Centre frequency in MHz. */
+    uint32_t freq_mhz;
+    /** WLNK_FREQ_* bits from the regulatory domain. */
+    uint32_t flags;
+} wlnk_freq_t;
+
 /** Size of wlnk_iface_t::ifname: the kernel's IFNAMSIZ, NUL included. */
 #define WLNK_IFNAME_MAX 16
 /** Size of wlnk_iface_t::mac. */
@@ -200,6 +210,24 @@ WLNK_API void wlnk_iface_free(wlnk_iface_t *ifaces);
  * interface, or the kernel has no nl80211.
  */
 WLNK_API int wlnk_iface_info(const char *ifname, wlnk_iface_t *out);
+
+/**
+ * @brief Frequencies the radio behind an interface supports, with their
+ * regulatory flags, in ascending order. Needs no privileges.
+ * @param ifname Interface name.
+ * @param out Receives a caller-owned array, NULL when there are none. Free
+ * it with wlnk_freq_free().
+ * @param n Receives the number of entries.
+ * @return WLNK_OK; WLNK_E_NOT_FOUND when there is no such wireless
+ * interface, or the kernel has no nl80211.
+ */
+WLNK_API int wlnk_freq_list(const char *ifname, wlnk_freq_t **out, size_t *n);
+
+/**
+ * @brief Free a wlnk_freq_list() result.
+ * @param freqs Array to free; NULL is a no-op.
+ */
+WLNK_API void wlnk_freq_free(wlnk_freq_t *freqs);
 
 #ifdef __cplusplus
 }

@@ -12,7 +12,8 @@
  *
  * Enumeration needs nl80211: without it that test skips, unless
  * WLNK_TEST_NL80211 is set (CI's simulated radios), which makes it fail and
- * also requires interfaces on monitor-capable radios with a band.
+ * also requires interfaces on monitor-capable radios with a band and
+ * frequencies.
  */
 
 #include <stdarg.h>
@@ -39,6 +40,8 @@
 #define BAND_CAPS                                                              \
     (WLNK_CAP_BAND_2GHZ | WLNK_CAP_BAND_5GHZ | WLNK_CAP_BAND_6GHZ |            \
      WLNK_CAP_BAND_60GHZ)
+/** Every frequency flag the header defines. */
+#define ALL_FREQ_FLAGS ((WLNK_FREQ_RADAR << 1) - 1)
 
 typedef const char *(*namer_t)(uint32_t);
 
@@ -278,6 +281,77 @@ static void test_info_matches_list(void **state)
     wlnk_iface_free(ifaces);
 }
 
+/** Missing arguments are refused, and the outputs that were given are
+ * cleared. */
+static void test_freq_list_needs_arguments(void **state)
+{
+    (void)state;
+    wlnk_freq_t dummy;
+    wlnk_freq_t *freqs = &dummy;
+    size_t n = 7;
+
+    assert_int_equal(wlnk_freq_list(NULL, &freqs, &n), WLNK_E_INVALID_ARG);
+    assert_null(freqs);
+    assert_int_equal(n, 0);
+    assert_true(wlnk_err_msg()[0] != '\0');
+    assert_int_equal(wlnk_freq_list("wlan0", NULL, &n), WLNK_E_INVALID_ARG);
+    assert_int_equal(wlnk_freq_list("wlan0", &freqs, NULL), WLNK_E_INVALID_ARG);
+}
+
+/** A name no machine has is not found; freeing nothing is a no-op. */
+static void test_freq_list_unknown_name(void **state)
+{
+    (void)state;
+    wlnk_freq_t *freqs = NULL;
+    size_t n = 7;
+
+    assert_int_equal(wlnk_freq_list(ABSENT, &freqs, &n), WLNK_E_NOT_FOUND);
+    assert_null(freqs);
+    assert_int_equal(n, 0);
+    wlnk_freq_free(NULL);
+}
+
+/** Each radio's frequencies are strictly ascending, with defined flags;
+ * CI's simulated radios have some. */
+static void test_freq_list_reports_frequencies(void **state)
+{
+    (void)state;
+    bool required = getenv("WLNK_TEST_NL80211") != NULL;
+    wlnk_iface_t *ifaces = NULL;
+    size_t n = 0;
+
+    int rc = wlnk_iface_list(&ifaces, &n);
+    if ((rc == WLNK_E_NOT_FOUND && !required) || (rc == WLNK_OK && n == 0))
+        skip();
+    if (rc != WLNK_OK)
+        fail_msg("%s: %s", wlnk_strerr(rc), wlnk_err_msg());
+    for (size_t i = 0; i < n; i++) {
+        bool asked = false; /* one interface per radio is enough */
+        for (size_t j = 0; j < i; j++)
+            asked |= ifaces[j].wiphy == ifaces[i].wiphy;
+        if (asked)
+            continue;
+
+        wlnk_freq_t *freqs = NULL;
+        size_t m = 0;
+        rc = wlnk_freq_list(ifaces[i].ifname, &freqs, &m);
+        if (rc != WLNK_OK)
+            fail_msg("%s: %s: %s", ifaces[i].ifname, wlnk_strerr(rc),
+                     wlnk_err_msg());
+        assert_true((freqs == NULL) == (m == 0));
+        if (required)
+            assert_true(m > 0);
+        for (size_t j = 0; j < m; j++) {
+            assert_true(freqs[j].freq_mhz > 0);
+            assert_int_equal(freqs[j].flags & ~ALL_FREQ_FLAGS, 0);
+            if (j > 0)
+                assert_true(freqs[j - 1].freq_mhz < freqs[j].freq_mhz);
+        }
+        wlnk_freq_free(freqs);
+    }
+    wlnk_iface_free(ifaces);
+}
+
 int main(void)
 {
     const struct CMUnitTest tests[] = {
@@ -293,6 +367,9 @@ int main(void)
         cmocka_unit_test(test_info_unknown_name),
         cmocka_unit_test(test_info_not_wireless),
         cmocka_unit_test(test_info_matches_list),
+        cmocka_unit_test(test_freq_list_needs_arguments),
+        cmocka_unit_test(test_freq_list_unknown_name),
+        cmocka_unit_test(test_freq_list_reports_frequencies),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

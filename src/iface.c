@@ -263,7 +263,40 @@ struct wiphy_ctx {
     bool seen;
     /** What it can do so far. */
     wlnk_caps_t caps;
+    /** Whether to collect its frequencies. */
+    bool want_freqs;
+    /** Frequencies so far, unsorted and possibly repeated. */
+    wlnk_freq_t *freqs;
+    /** Frequencies used. */
+    size_t n;
+    /** Frequencies allocated. */
+    size_t cap;
+    /** Set when a frequency could not be stored. */
+    bool no_memory;
 };
+
+/**
+ * @brief Store one frequency.
+ * @param c Context to grow.
+ * @param mhz Frequency.
+ * @param flags Its WLNK_FREQ_* bits.
+ * @return Whether it was stored.
+ */
+static bool push_freq(struct wiphy_ctx *c, uint32_t mhz, uint32_t flags)
+{
+    if (c->n == c->cap) {
+        size_t cap = c->cap != 0 ? c->cap * 2 : 64;
+        wlnk_freq_t *grown = realloc(c->freqs, cap * sizeof(*grown));
+        if (grown == NULL)
+            return false;
+        c->freqs = grown;
+        c->cap = cap;
+    }
+    c->freqs[c->n].freq_mhz = mhz;
+    c->freqs[c->n].flags = flags;
+    c->n++;
+    return true;
+}
 
 /**
  * @brief Read the supported interface types: monitor, and so monitor TX.
@@ -307,7 +340,40 @@ static void read_combinations(struct wiphy_ctx *c, struct nlattr *combs)
 }
 
 /**
- * @brief Read the bands the radio supports.
+ * @brief Read the frequencies of one band.
+ * @param c Context to update.
+ * @param freqs NL80211_BAND_ATTR_FREQS.
+ */
+static void read_freqs(struct wiphy_ctx *c, struct nlattr *freqs)
+{
+    struct nlattr *freq;
+    int rem;
+    nla_for_each_nested(freq, freqs, rem)
+    {
+        struct nlattr *fattrs[NL80211_FREQUENCY_ATTR_MAX + 1];
+        if (nla_parse_nested(fattrs, NL80211_FREQUENCY_ATTR_MAX, freq, NULL) !=
+            0)
+            continue;
+        if (fattrs[NL80211_FREQUENCY_ATTR_FREQ] == NULL)
+            continue;
+        uint32_t flags = 0;
+        if (fattrs[NL80211_FREQUENCY_ATTR_DISABLED] != NULL)
+            flags |= WLNK_FREQ_DISABLED;
+        if (fattrs[NL80211_FREQUENCY_ATTR_NO_IR] != NULL)
+            flags |= WLNK_FREQ_NO_IR;
+        if (fattrs[NL80211_FREQUENCY_ATTR_RADAR] != NULL)
+            flags |= WLNK_FREQ_RADAR;
+        if (!push_freq(c, nla_get_u32(fattrs[NL80211_FREQUENCY_ATTR_FREQ]),
+                       flags)) {
+            c->no_memory = true;
+            return;
+        }
+    }
+}
+
+/**
+ * @brief Read the bands the radio supports, and their frequencies when
+ * asked.
  * @param c Context to update.
  * @param bands NL80211_ATTR_WIPHY_BANDS.
  */
@@ -318,6 +384,16 @@ static void read_bands(struct wiphy_ctx *c, struct nlattr *bands)
     nla_for_each_nested(band, bands, rem)
     {
         c->caps.caps |= band_cap((uint32_t)nla_type(band));
+        if (!c->want_freqs)
+            continue;
+
+        struct nlattr *battrs[NL80211_BAND_ATTR_MAX + 1];
+        if (nla_parse_nested(battrs, NL80211_BAND_ATTR_MAX, band, NULL) != 0)
+            continue;
+        if (battrs[NL80211_BAND_ATTR_FREQS] != NULL)
+            read_freqs(c, battrs[NL80211_BAND_ATTR_FREQS]);
+        if (c->no_memory)
+            return;
     }
 }
 
@@ -325,7 +401,8 @@ static void read_bands(struct wiphy_ctx *c, struct nlattr *bands)
  * @brief Split dump callback: add one message about the wanted radio.
  * @param attrs Parsed message.
  * @param user The wiphy_ctx.
- * @return WLNK_OK.
+ * @return WLNK_OK, or WLNK_E_NO_MEMORY when a frequency could not be
+ * stored.
  */
 static int on_wiphy(wlnk_nl_attrs_t attrs, void *user)
 {
@@ -350,17 +427,40 @@ static int on_wiphy(wlnk_nl_attrs_t attrs, void *user)
         read_combinations(c, attrs[NL80211_ATTR_INTERFACE_COMBINATIONS]);
     if (attrs[NL80211_ATTR_WIPHY_BANDS] != NULL)
         read_bands(c, attrs[NL80211_ATTR_WIPHY_BANDS]);
-    return WLNK_OK;
+    return c->no_memory ? WLNK_E_NO_MEMORY : WLNK_OK;
 }
 
 /**
- * @brief One radio's capabilities.
+ * @brief Describe one radio into a context.
  *
  * The dump is requested split, as iw does: a modern radio's description
  * does not fit one netlink message, and without splitting the kernel
  * answers large radios with ENOBUFS. Its attributes then arrive spread
  * over several messages, so they are accumulated.
  *
+ * @param nl Open handle.
+ * @param c Context naming the radio in want; filled in.
+ * @return WLNK_OK; WLNK_E_NOT_FOUND when the radio is gone.
+ */
+static int dump_radio(wlnk_nl_t *nl, struct wiphy_ctx *c)
+{
+    struct nl_msg *msg = wlnk_nl_msg(nl, NL80211_CMD_GET_WIPHY, true);
+    if (msg != NULL &&
+        (nla_put_u32(msg, NL80211_ATTR_WIPHY, (uint32_t)c->want) != 0 ||
+         nla_put_flag(msg, NL80211_ATTR_SPLIT_WIPHY_DUMP) != 0)) {
+        nlmsg_free(msg);
+        msg = NULL;
+    }
+    int rc = wlnk_nl_run(nl, msg, on_wiphy, c, "get wiphy");
+    if (rc != WLNK_OK)
+        return rc;
+    if (!c->seen)
+        return wlnk_fail(WLNK_E_NOT_FOUND, 0, "nl80211: no such radio");
+    return WLNK_OK;
+}
+
+/**
+ * @brief One radio's capabilities.
  * @param nl Open handle.
  * @param wiphy The radio.
  * @param out Receives its capabilities.
@@ -369,20 +469,10 @@ static int on_wiphy(wlnk_nl_attrs_t attrs, void *user)
 static int radio_caps(wlnk_nl_t *nl, int32_t wiphy, wlnk_caps_t *out)
 {
     struct wiphy_ctx c = {.want = wiphy};
-    struct nl_msg *msg = wlnk_nl_msg(nl, NL80211_CMD_GET_WIPHY, true);
-    if (msg != NULL &&
-        (nla_put_u32(msg, NL80211_ATTR_WIPHY, (uint32_t)wiphy) != 0 ||
-         nla_put_flag(msg, NL80211_ATTR_SPLIT_WIPHY_DUMP) != 0)) {
-        nlmsg_free(msg);
-        msg = NULL;
-    }
-    int rc = wlnk_nl_run(nl, msg, on_wiphy, &c, "get wiphy");
-    if (rc != WLNK_OK)
-        return rc;
-    if (!c.seen)
-        return wlnk_fail(WLNK_E_NOT_FOUND, 0, "nl80211: no such radio");
-    *out = c.caps;
-    return WLNK_OK;
+    int rc = dump_radio(nl, &c);
+    if (rc == WLNK_OK)
+        *out = c.caps;
+    return rc;
 }
 
 /**
@@ -454,6 +544,31 @@ void wlnk_iface_free(wlnk_iface_t *ifaces)
     free(ifaces);
 }
 
+/**
+ * @brief One interface by index, as a list row without its radio's
+ * capabilities.
+ * @param nl Open handle.
+ * @param idx Interface index.
+ * @param out Receives the row.
+ * @return WLNK_OK; WLNK_E_NOT_FOUND when it is not a wireless interface.
+ */
+static int iface_by_index(wlnk_nl_t *nl, unsigned int idx, wlnk_iface_t *out)
+{
+    struct list_ctx c = {0};
+    struct nl_msg *msg = wlnk_nl_msg(nl, NL80211_CMD_GET_INTERFACE, false);
+    if (msg != NULL && nla_put_u32(msg, NL80211_ATTR_IFINDEX, idx) != 0) {
+        nlmsg_free(msg);
+        msg = NULL;
+    }
+    int rc = wlnk_nl_run(nl, msg, on_iface, &c, "get interface");
+    if (rc == WLNK_OK && c.n == 0)
+        rc = wlnk_fail(WLNK_E_NOT_FOUND, 0, "not a wireless interface");
+    if (rc == WLNK_OK)
+        *out = c.rows[0];
+    free(c.rows);
+    return rc;
+}
+
 int wlnk_iface_info(const char *ifname, wlnk_iface_t *out)
 {
     if (out != NULL)
@@ -472,20 +587,78 @@ int wlnk_iface_info(const char *ifname, wlnk_iface_t *out)
         return rc;
 
     /* The same requests a list row is built from, for one index. */
-    struct list_ctx c = {0};
-    struct nl_msg *msg = wlnk_nl_msg(nl, NL80211_CMD_GET_INTERFACE, false);
-    if (msg != NULL && nla_put_u32(msg, NL80211_ATTR_IFINDEX, idx) != 0) {
-        nlmsg_free(msg);
-        msg = NULL;
-    }
-    rc = wlnk_nl_run(nl, msg, on_iface, &c, "get interface");
+    rc = iface_by_index(nl, idx, out);
     if (rc == WLNK_OK)
-        rc = fill_radios(nl, c.rows, &c.n);
+        rc = radio_caps(nl, out->wiphy, &out->radio);
     wlnk_nl_close(&nl);
-    if (rc == WLNK_OK && c.n == 0)
-        rc = wlnk_fail(WLNK_E_NOT_FOUND, 0, "info: not a wireless interface");
-    if (rc == WLNK_OK)
-        *out = c.rows[0];
-    free(c.rows);
-    return rc == WLNK_OK ? wlnk_ok() : rc;
+    if (rc != WLNK_OK) {
+        memset(out, 0, sizeof(*out));
+        return rc;
+    }
+    return wlnk_ok();
+}
+
+/**
+ * @brief Order frequencies by MHz, for qsort().
+ * @param a A wlnk_freq_t.
+ * @param b Another wlnk_freq_t.
+ * @return Negative, zero or positive as @p a is below, at or above @p b.
+ */
+static int by_freq(const void *a, const void *b)
+{
+    uint32_t x = ((const wlnk_freq_t *)a)->freq_mhz;
+    uint32_t y = ((const wlnk_freq_t *)b)->freq_mhz;
+    return x < y ? -1 : (x > y ? 1 : 0);
+}
+
+int wlnk_freq_list(const char *ifname, wlnk_freq_t **out, size_t *n)
+{
+    if (out != NULL)
+        *out = NULL;
+    if (n != NULL)
+        *n = 0;
+    if (ifname == NULL || out == NULL || n == NULL)
+        return wlnk_fail(WLNK_E_INVALID_ARG, 0,
+                         "freqs: no interface name or output");
+
+    unsigned int idx = if_nametoindex(ifname);
+    if (idx == 0)
+        return wlnk_fail(WLNK_E_NOT_FOUND, 0, "freqs: no such interface");
+
+    wlnk_nl_t *nl = NULL;
+    int rc = wlnk_nl_open(&nl);
+    if (rc != WLNK_OK)
+        return rc;
+
+    wlnk_iface_t row;
+    struct wiphy_ctx c = {.want_freqs = true};
+    rc = iface_by_index(nl, idx, &row);
+    if (rc == WLNK_OK) {
+        c.want = row.wiphy;
+        rc = dump_radio(nl, &c);
+    }
+    wlnk_nl_close(&nl);
+    if (rc != WLNK_OK || c.n == 0) {
+        free(c.freqs);
+        return rc == WLNK_OK ? wlnk_ok() : rc;
+    }
+
+    qsort(c.freqs, c.n, sizeof(*c.freqs), by_freq);
+    /* A split dump can repeat a band across messages: keep one entry per
+     * frequency, with every flag any copy carried. */
+    size_t uniq = 0;
+    for (size_t i = 0; i < c.n; i++) {
+        if (uniq > 0 && c.freqs[uniq - 1].freq_mhz == c.freqs[i].freq_mhz)
+            c.freqs[uniq - 1].flags |= c.freqs[i].flags;
+        else
+            c.freqs[uniq++] = c.freqs[i];
+    }
+    *out = c.freqs;
+    *n = uniq;
+    return wlnk_ok();
+}
+
+void wlnk_freq_free(wlnk_freq_t *freqs)
+{
+    free(freqs);
 }
