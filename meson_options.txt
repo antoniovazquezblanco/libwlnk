@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-FileCopyrightText: 2026 Antonio Vázquez Blanco
+
+# Unit tests
+option('tests',
+  type: 'feature',
+  value: 'enabled',
+  description: 'Build the unit tests (needs cmocka)')

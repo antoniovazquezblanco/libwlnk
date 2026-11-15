@@ -28,3 +28,4 @@ add_project_arguments(cc.get_supported_arguments([
   ]), language: 'c')
 
 subdir('src')
+subdir('tests')

@@ -28,5 +28,10 @@ wlnk_lib = library('wlnk', wlnk_src,
   gnu_symbol_visibility: 'hidden',
   install: true)
 
+# Dependency
+wlnk_dep = declare_dependency(
+  link_with: wlnk_lib,
+  include_directories: include_directories('.'))
+
 # Installation
 install_headers('api.h', 'version.h', subdir: 'wlnk')

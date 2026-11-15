@@ -22,20 +22,22 @@ jobs:
             image: ubuntu:22.04
             install: >-
               apt-get update && apt-get install -y
-              git meson ninja-build build-essential
+              git meson ninja-build pkg-config build-essential
+              libcmocka-dev
 
           - name: Kali
             image: kalilinux/kali-last-release
             install: >-
               apt-get update && apt-get install -y
-              git meson ninja-build build-essential
+              git meson ninja-build pkg-config build-essential
+              libcmocka-dev
             optional: true
 
           - name: Alpine 3.22
             image: alpine:3.22
             install: >-
               apk add --no-cache
-              git build-base meson
+              git build-base meson pkgconf cmocka-dev
 
     steps:
       - name: Install dependencies
