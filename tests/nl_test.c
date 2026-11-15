@@ -8,7 +8,8 @@
  * socket and running requests on it.
  *
  * Internal test. Needs no radio and no privileges; where the kernel has no
- * nl80211 the socket tests report themselves skipped.
+ * nl80211 the socket tests report themselves skipped, unless
+ * WLNK_TEST_NL80211 is set (CI's simulated radios), which makes them fail.
  */
 
 #include <stdarg.h>
@@ -19,6 +20,7 @@
 
 #include <errno.h>
 #include <netlink/errno.h>
+#include <stdlib.h>
 #include <string.h>
 #include "err.h"
 
@@ -86,38 +88,39 @@ static void test_close_without_handle(void **state)
     assert_null(h);
 }
 
-/** Opening needs no privileges: it finds nl80211 or reports it missing.
- * Closing clears the handle. */
-static void test_open_close(void **state)
-{
-    (void)state;
-    wlnk_nl_t *h = NULL;
-
-    int rc = wlnk_nl_open(&h);
-    if (rc == WLNK_E_NOT_FOUND) {
-        assert_null(h);
-        skip();
-    }
-    assert_int_equal(rc, WLNK_OK);
-    assert_non_null(h);
-    assert_string_equal(wlnk_err_msg(), "");
-
-    wlnk_nl_close(&h);
-    assert_null(h);
-}
-
 /**
  * @brief Open a handle, or skip the test where the kernel has no nl80211.
+ *
+ * With WLNK_TEST_NL80211 set nl80211 is required, so a missing one fails.
+ *
  * @return The open handle.
  */
 static wlnk_nl_t *open_or_skip(void)
 {
     wlnk_nl_t *h = NULL;
     int rc = wlnk_nl_open(&h);
-    if (rc == WLNK_E_NOT_FOUND)
+    if (rc == WLNK_E_NOT_FOUND) {
+        assert_null(h);
+        if (getenv("WLNK_TEST_NL80211") != NULL)
+            fail_msg("WLNK_TEST_NL80211 is set, but %s", wlnk_err_msg());
         skip();
+    }
     assert_int_equal(rc, WLNK_OK);
     return h;
+}
+
+/** Opening needs no privileges: it finds nl80211 or reports it missing.
+ * Closing clears the handle. */
+static void test_open_close(void **state)
+{
+    (void)state;
+    wlnk_nl_t *h = open_or_skip();
+
+    assert_non_null(h);
+    assert_string_equal(wlnk_err_msg(), "");
+
+    wlnk_nl_close(&h);
+    assert_null(h);
 }
 
 /** Without a handle there is no message, and running none fails cleanly. */

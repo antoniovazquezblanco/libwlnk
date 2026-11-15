@@ -1,0 +1,40 @@
+name: Hardware
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  hwsim:
+    name: mac80211_hwsim
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config libcmocka-dev \
+            libnl-3-dev libnl-genl-3-dev
+          pipx install meson
+      - name: Load the simulated radios
+        run: |
+          if ! modinfo mac80211_hwsim >/dev/null 2>&1; then
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)" || true
+          fi
+          if sudo modprobe mac80211_hwsim radios=2; then
+            echo "WLNK_TEST_NL80211=1" >> "$GITHUB_ENV"
+            ls /sys/class/ieee80211
+          else
+            echo "::warning title=No simulated radio::mac80211_hwsim is unavailable for kernel $(uname -r); the netlink tests will skip."
+          fi
+      - name: Configure
+        run: meson setup build --werror
+      - name: Build
+        run: meson compile -C build
+      - name: Test
+        run: meson test -C build --print-errorlogs

@@ -30,12 +30,16 @@ jobs:
     needs: platforms
     uses: ./.github/workflows/_build-test.yml
 
+  hardware:
+    name: Hardware
+    needs: build-test
+    uses: ./.github/workflows/_hardware.yml
+
   packaging:
     name: Packaging
-    needs: build-test
+    needs: hardware
     uses: ./.github/workflows/_package.yml
 
-  # Pushed v* tags only: never pull requests, branches or manual runs.
   publish:
     name: Publish
     needs: packaging
