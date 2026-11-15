@@ -35,6 +35,18 @@ test('wlnk_chandef_test',
     objects: wlnk_lib.extract_objects('chandef.c'),
     dependencies: [wlnk_dep.partial_dependency(includes: true), cmocka_dep]))
 
+# Claim tests
+test('wlnk_claim_test',
+  executable(
+    'wlnk_claim_test', 'claim_test.c', files('../src/rundir.c'),
+    c_args: '-DWLNK_RUNDIR="@0@"'.format(
+      (meson.current_build_dir() / 'claim-rundir').replace('\\', '/')),
+    objects: wlnk_lib.extract_objects('claim.c', 'journal.c', 'lock.c',
+      'radio.c', 'vif.c', 'chandef.c', 'iface.c', 'link.c', 'nl.c', 'err.c'),
+    dependencies: [wlnk_dep.partial_dependency(includes: true), cmocka_dep,
+      nl_deps]),
+  is_parallel: false)
+
 # Error tests
 test('wlnk_err_test',
   executable(

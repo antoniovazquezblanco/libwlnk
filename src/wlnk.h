@@ -9,6 +9,7 @@
 #ifndef WLNK_WLNK_H
 #define WLNK_WLNK_H
 
+#include "claim.h"
 #include "err.h"
 #include "iface.h"
 #include "version.h"

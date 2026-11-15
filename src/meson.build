@@ -23,6 +23,7 @@ nl_deps = [dependency('libnl-3.0'), dependency('libnl-genl-3.0')]
 # Library
 wlnk_src = files(
   'chandef.c',
+  'claim.c',
   'err.c',
   'iface.c',
   'journal.c',
@@ -50,6 +51,7 @@ wlnk_dep = declare_dependency(
 # Installation
 wlnk_headers = files(
   'api.h',
+  'claim.h',
   'err.h',
   'iface.h',
   'version.h',

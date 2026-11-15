@@ -19,6 +19,9 @@ using wlnk_fn = void (*)();
  * object even though nothing reads it. Add new public functions here. */
 extern const wlnk_fn wlnk_cxx_fns[];
 const wlnk_fn wlnk_cxx_fns[] = {
+    reinterpret_cast<wlnk_fn>(&wlnk_claim),
+    reinterpret_cast<wlnk_fn>(&wlnk_release),
+    reinterpret_cast<wlnk_fn>(&wlnk_recover),
     reinterpret_cast<wlnk_fn>(&wlnk_strerr),
     reinterpret_cast<wlnk_fn>(&wlnk_err_syserrno),
     reinterpret_cast<wlnk_fn>(&wlnk_err_msg),
