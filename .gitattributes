@@ -1,0 +1,5 @@
+# LF in every checkout and archive
+* text=auto eol=lf
+
+# Git archive fill in the version
+.archive-version export-subst
