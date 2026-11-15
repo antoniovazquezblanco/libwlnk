@@ -9,8 +9,15 @@ path = [
   ".editorconfig",
   ".gitattributes",
   ".github/**",
+  ".gitignore",
   "README.md",
   "**/meson.build",
 ]
 SPDX-FileCopyrightText = "2026 Antonio Vázquez Blanco"
 SPDX-License-Identifier = "BSD-3-Clause"
+
+# Meson WrapDB
+[[annotations]]
+path = "subprojects/*.wrap"
+SPDX-FileCopyrightText = "The Meson development team"
+SPDX-License-Identifier = "MIT"

@@ -1,7 +1,9 @@
 # Testing
 
 # Dependencies
-cmocka_dep = dependency('cmocka', required: get_option('tests'))
+cmocka_dep = dependency('cmocka',
+  required: get_option('tests'),
+  default_options: ['default_library=static', 'werror=false'])
 if not cmocka_dep.found()
   subdir_done()
 endif
