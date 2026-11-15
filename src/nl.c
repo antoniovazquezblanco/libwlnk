@@ -6,6 +6,7 @@
  * Netlink transport over libnl.
  */
 
+#include <errno.h>
 #include <netlink/errno.h>
 #include <netlink/genl/ctrl.h>
 #include <netlink/genl/genl.h>
@@ -23,6 +24,13 @@
  * 256 kB keeps a busy dump from overrunning the socket.
  */
 #define NL_RX_BUF (256 * 1024)
+
+/**
+ * Times a libnl call that reports NLE_AGAIN is retried.
+ * The socket is blocking, so it can only be a spurious wakeup; the bound
+ * keeps a broken socket from spinning forever.
+ */
+#define NL_AGAIN_RETRIES 3
 
 struct wlnk_nl {
     /** Generic netlink socket. */
@@ -52,6 +60,7 @@ int wlnk_nle_status(int nle)
     case -NLE_INVAL:
     case -NLE_RANGE:
         return WLNK_E_INVALID_ARG;
+    case -NLE_AGAIN: /* retried at the call; still here means it persisted */
     default:
         return WLNK_E_IO;
     }
@@ -129,4 +138,232 @@ void wlnk_nl_close(wlnk_nl_t **h)
     nl_socket_free((*h)->sk);
     free(*h);
     *h = NULL;
+}
+
+struct nl_msg *wlnk_nl_msg(wlnk_nl_t *h, uint8_t cmd, bool dump)
+{
+    if (h == NULL)
+        return NULL;
+    struct nl_msg *msg = nlmsg_alloc();
+    if (msg == NULL)
+        return NULL;
+    if (genlmsg_put(msg, 0, 0, h->family, 0, dump ? NLM_F_DUMP : 0, cmd, 0) ==
+        NULL) {
+        nlmsg_free(msg);
+        return NULL;
+    }
+    return msg;
+}
+
+/**
+ * State shared by the libnl callbacks of one exchange.
+ * done is a flag of its own rather than a sentinel inside status: every
+ * value a status can take is a real one, WLNK_OK included.
+ */
+struct run_state {
+    /** Reply callback, or NULL. */
+    wlnk_nl_cb cb;
+    /** Passed to cb. */
+    void *user;
+    /** Set once no further reply can change the outcome. */
+    bool done;
+    /** The wlnk status, once done. */
+    int status;
+    /** errno reported by the kernel, 0 if none. */
+    int syserrno;
+    /** libnl error from the transport, 0 if none. */
+    int nle;
+};
+
+/**
+ * @brief libnl error callback: the kernel answered with an error message.
+ * @param nla Sender address, unused.
+ * @param nlerr The kernel's error message.
+ * @param arg The exchange's run_state.
+ * @return NL_STOP: the exchange is over.
+ */
+static int on_error(struct sockaddr_nl *nla, struct nlmsgerr *nlerr, void *arg)
+{
+    (void)nla;
+    struct run_state *st = arg;
+    st->done = true;
+    st->syserrno = nlerr->error < 0 ? -nlerr->error : nlerr->error;
+    switch (st->syserrno) {
+    case EPERM:
+    case EACCES:
+        st->status = WLNK_E_PERM;
+        break;
+    case ENODEV:
+    case ENOENT:
+        st->status = WLNK_E_NOT_FOUND;
+        break;
+    case ENOBUFS:
+    case ENOMEM:
+        st->status = WLNK_E_NO_MEMORY;
+        break;
+    case EOPNOTSUPP: /* ENOTSUP is the same value on Linux */
+        st->status = WLNK_E_UNSUPPORTED;
+        break;
+    case EINVAL:
+        st->status = WLNK_E_INVALID_ARG;
+        break;
+    case 0:
+        st->status = WLNK_OK;
+        break;
+    default:
+        st->status = WLNK_E_IO;
+        break;
+    }
+    return NL_STOP;
+}
+
+/**
+ * @brief libnl finish callback: the end of a dump.
+ * @param msg The message, unused.
+ * @param arg The exchange's run_state.
+ * @return NL_SKIP.
+ */
+static int on_finish(struct nl_msg *msg, void *arg)
+{
+    (void)msg;
+    struct run_state *st = arg;
+    if (!st->done) {
+        st->done = true;
+        st->status = WLNK_OK;
+    }
+    return NL_SKIP;
+}
+
+/**
+ * @brief libnl ack callback: the kernel acknowledged the request.
+ * @param msg The message, unused.
+ * @param arg The exchange's run_state.
+ * @return NL_STOP: the exchange is over.
+ */
+static int on_ack(struct nl_msg *msg, void *arg)
+{
+    (void)msg;
+    struct run_state *st = arg;
+    if (!st->done) {
+        st->done = true;
+        st->status = WLNK_OK;
+    }
+    return NL_STOP;
+}
+
+/**
+ * @brief libnl valid callback: one reply, parsed and handed to the caller.
+ * @param msg The reply.
+ * @param arg The exchange's run_state.
+ * @return NL_SKIP to go on, NL_STOP when the caller's callback stopped.
+ */
+static int on_valid(struct nl_msg *msg, void *arg)
+{
+    struct run_state *st = arg;
+    if (st->cb == NULL)
+        return NL_SKIP;
+
+    struct genlmsghdr *gnlh = nlmsg_data(nlmsg_hdr(msg));
+    wlnk_nl_attrs_t attrs;
+    if (nla_parse(attrs, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
+                  genlmsg_attrlen(gnlh, 0), NULL) != 0)
+        return NL_SKIP; /* a reply we cannot parse is not a fatal error */
+
+    int rc = st->cb(attrs, st->user);
+    if (rc != WLNK_OK) {
+        st->done = true;
+        st->status = rc;
+        return NL_STOP;
+    }
+    return NL_SKIP;
+}
+
+/**
+ * @brief Record the detail of a failed exchange.
+ *
+ * A libnl error gets libnl's text, a refusal the capability it needs, an
+ * errno the system's text and a status of our own its name.
+ *
+ * @param status Status of the failure.
+ * @param syserrno errno reported by the kernel, or 0.
+ * @param nle libnl error, or 0.
+ * @param step Names the operation.
+ * @return @p status.
+ */
+static int run_fail(int status, int syserrno, int nle, const char *step)
+{
+    char msg[WLNK_ERR_MSG_MAX];
+
+    if (status == WLNK_E_PERM || syserrno == 0) {
+        snprintf(msg, sizeof(msg), "nl80211 %s: %s", step,
+                 status == WLNK_E_PERM
+                     ? "not permitted (CAP_NET_ADMIN/CAP_NET_RAW)"
+                 : nle < 0 ? nl_geterror(nle)
+                           : wlnk_strerr(status));
+        return wlnk_fail(status, syserrno, msg);
+    }
+    snprintf(msg, sizeof(msg), "nl80211 %s", step);
+    return wlnk_fail_sys(status, syserrno, msg);
+}
+
+/**
+ * @brief Send one message, retrying a transient NLE_AGAIN.
+ * @param h Handle.
+ * @param msg Message to send; not consumed.
+ * @return libnl's result.
+ */
+static int nl_send_msg(wlnk_nl_t *h, struct nl_msg *msg)
+{
+    for (int i = 0;; i++) {
+        int rc = nl_send_auto_complete(h->sk, msg);
+        if (rc != -NLE_AGAIN || i == NL_AGAIN_RETRIES)
+            return rc;
+    }
+}
+
+int wlnk_nl_run(wlnk_nl_t *h, struct nl_msg *msg, wlnk_nl_cb cb, void *user,
+                const char *step)
+{
+    if (h == NULL || msg == NULL) {
+        nlmsg_free(msg);
+        return wlnk_fail(WLNK_E_NO_MEMORY, 0, "nl80211: message setup");
+    }
+
+    struct nl_cb *nlcb = nl_cb_alloc(NL_CB_DEFAULT);
+    if (nlcb == NULL) {
+        nlmsg_free(msg);
+        return wlnk_fail(WLNK_E_NO_MEMORY, 0, "nl80211: callback setup");
+    }
+
+    struct run_state st = {.cb = cb, .user = user};
+    nl_cb_err(nlcb, NL_CB_CUSTOM, on_error, &st);
+    nl_cb_set(nlcb, NL_CB_FINISH, NL_CB_CUSTOM, on_finish, &st);
+    nl_cb_set(nlcb, NL_CB_ACK, NL_CB_CUSTOM, on_ack, &st);
+    nl_cb_set(nlcb, NL_CB_VALID, NL_CB_CUSTOM, on_valid, &st);
+
+    int sent = nl_send_msg(h, msg);
+    nlmsg_free(msg);
+    if (sent < 0) {
+        nl_cb_put(nlcb);
+        return run_fail(wlnk_nle_status(sent), 0, sent, step);
+    }
+
+    int again = 0;
+    while (!st.done) {
+        int rc = nl_recvmsgs(h->sk, nlcb);
+        if (rc == -NLE_AGAIN && again++ < NL_AGAIN_RETRIES)
+            continue;
+        if (rc < 0 && !st.done) {
+            /* libnl reports its own negative NLE_* codes here, never
+             * errno; a signal is not retried, so the caller sees it. */
+            st.done = true;
+            st.status = wlnk_nle_status(rc);
+            st.nle = rc;
+        }
+    }
+    nl_cb_put(nlcb);
+
+    if (st.status != WLNK_OK)
+        return run_fail(st.status, st.syserrno, st.nle, step);
+    return wlnk_ok();
 }

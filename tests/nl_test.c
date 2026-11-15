@@ -4,11 +4,11 @@
  *
  * nl_test.c
  * Check the netlink transport: the libnl error mapper (libnl reports
- * negative NLE_* codes of its own, never errno) and opening the nl80211
- * socket.
+ * negative NLE_* codes of its own, never errno), opening the nl80211
+ * socket and running requests on it.
  *
- * Internal test. Needs no privileges; where the kernel has no nl80211 the
- * socket test reports itself skipped.
+ * Internal test. Needs no radio and no privileges; where the kernel has no
+ * nl80211 the socket tests report themselves skipped.
  */
 
 #include <stdarg.h>
@@ -17,10 +17,15 @@
 #include <setjmp.h>
 #include <cmocka.h>
 
+#include <errno.h>
 #include <netlink/errno.h>
+#include <string.h>
 #include "err.h"
 
 #include "nl.h"
+
+/** An interface index no kernel hands out. */
+#define NO_IFINDEX 0x7fffffffu
 
 /** Each documented libnl failure lands on the status the public contract
  * names for it. */
@@ -40,7 +45,8 @@ static void test_failures_map(void **state)
 }
 
 /** A libnl "object busy" is not the radio-busy status: that one has claim
- * semantics, so an unmapped code stays a plain I/O failure. */
+ * semantics, so an unmapped code stays a plain I/O failure. NLE_AGAIN is
+ * retried at the call and is a failure only once the retries run out. */
 static void test_unmapped_failures_are_io(void **state)
 {
     (void)state;
@@ -100,6 +106,105 @@ static void test_open_close(void **state)
     assert_null(h);
 }
 
+/**
+ * @brief Open a handle, or skip the test where the kernel has no nl80211.
+ * @return The open handle.
+ */
+static wlnk_nl_t *open_or_skip(void)
+{
+    wlnk_nl_t *h = NULL;
+    int rc = wlnk_nl_open(&h);
+    if (rc == WLNK_E_NOT_FOUND)
+        skip();
+    assert_int_equal(rc, WLNK_OK);
+    return h;
+}
+
+/** Without a handle there is no message, and running none fails cleanly. */
+static void test_run_without_handle(void **state)
+{
+    (void)state;
+
+    assert_null(wlnk_nl_msg(NULL, NL80211_CMD_GET_PROTOCOL_FEATURES, false));
+    assert_int_equal(wlnk_nl_run(NULL, NULL, NULL, NULL, "nothing"),
+                     WLNK_E_NO_MEMORY);
+}
+
+/**
+ * @brief Count replies that carry the protocol features.
+ * @param attrs Parsed reply.
+ * @param user Counter to increment.
+ * @return WLNK_OK, or WLNK_E_IO for a reply without the features.
+ */
+static int count_features(wlnk_nl_attrs_t attrs, void *user)
+{
+    int *n = user;
+    (*n)++;
+    return attrs[NL80211_ATTR_PROTOCOL_FEATURES] != NULL ? WLNK_OK : WLNK_E_IO;
+}
+
+/** Each reply reaches the callback: protocol features is one reply, needing
+ * no radio and no privileges. */
+static void test_run_delivers_replies(void **state)
+{
+    (void)state;
+    wlnk_nl_t *h = open_or_skip();
+    int n = 0;
+
+    struct nl_msg *msg =
+        wlnk_nl_msg(h, NL80211_CMD_GET_PROTOCOL_FEATURES, false);
+    assert_non_null(msg);
+    assert_int_equal(
+        wlnk_nl_run(h, msg, count_features, &n, "get protocol features"),
+        WLNK_OK);
+    assert_int_equal(n, 1);
+    assert_string_equal(wlnk_err_msg(), "");
+    wlnk_nl_close(&h);
+}
+
+/**
+ * @brief Stop at the first reply with a status of the caller's own.
+ * @param attrs Parsed reply, unused.
+ * @param user Unused.
+ * @return WLNK_E_BUSY.
+ */
+static int stop_busy(wlnk_nl_attrs_t attrs, void *user)
+{
+    (void)attrs;
+    (void)user;
+    return WLNK_E_BUSY;
+}
+
+/** A callback that stops ends the exchange with its status. */
+static void test_callback_stops_run(void **state)
+{
+    (void)state;
+    wlnk_nl_t *h = open_or_skip();
+
+    struct nl_msg *msg =
+        wlnk_nl_msg(h, NL80211_CMD_GET_PROTOCOL_FEATURES, false);
+    assert_non_null(msg);
+    assert_int_equal(wlnk_nl_run(h, msg, stop_busy, NULL, "stop"), WLNK_E_BUSY);
+    wlnk_nl_close(&h);
+}
+
+/** A kernel refusal keeps its errno: an interface index that does not
+ * exist is ENODEV, reported as not found. */
+static void test_kernel_refusal(void **state)
+{
+    (void)state;
+    wlnk_nl_t *h = open_or_skip();
+
+    struct nl_msg *msg = wlnk_nl_msg(h, NL80211_CMD_GET_INTERFACE, false);
+    assert_non_null(msg);
+    assert_int_equal(nla_put_u32(msg, NL80211_ATTR_IFINDEX, NO_IFINDEX), 0);
+    assert_int_equal(wlnk_nl_run(h, msg, NULL, NULL, "get interface"),
+                     WLNK_E_NOT_FOUND);
+    assert_int_equal(wlnk_err_syserrno(), ENODEV);
+    assert_int_equal(strncmp(wlnk_err_msg(), "nl80211 get interface: ", 23), 0);
+    wlnk_nl_close(&h);
+}
+
 int main(void)
 {
     const struct CMUnitTest tests[] = {
@@ -109,6 +214,10 @@ int main(void)
         cmocka_unit_test(test_open_needs_handle),
         cmocka_unit_test(test_close_without_handle),
         cmocka_unit_test(test_open_close),
+        cmocka_unit_test(test_run_without_handle),
+        cmocka_unit_test(test_run_delivers_replies),
+        cmocka_unit_test(test_callback_stops_run),
+        cmocka_unit_test(test_kernel_refusal),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

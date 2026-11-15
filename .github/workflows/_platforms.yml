@@ -37,7 +37,7 @@ jobs:
             image: alpine:3.22
             install: >-
               apk add --no-cache
-              git build-base meson pkgconf cmocka-dev libnl3-dev
+              git build-base meson pkgconf cmocka-dev libnl3-dev linux-headers
 
     steps:
       - name: Install dependencies
