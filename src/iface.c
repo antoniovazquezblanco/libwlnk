@@ -225,6 +225,196 @@ static int on_iface(wlnk_nl_attrs_t attrs, void *user)
     return WLNK_OK;
 }
 
+/**
+ * @brief An nl80211 band as a capability bit.
+ *
+ * nl80211 numbers its bands in the order they were added to the kernel,
+ * which is not the public order: map rather than cast.
+ *
+ * @param nl_band NL80211_BAND_* value.
+ * @return The WLNK_CAP_BAND_* bit, or 0 for bands without one.
+ */
+static wlnk_capsmask_t band_cap(uint32_t nl_band)
+{
+    switch (nl_band) {
+    case NL80211_BAND_2GHZ:
+        return WLNK_CAP_BAND_2GHZ;
+    case NL80211_BAND_5GHZ:
+        return WLNK_CAP_BAND_5GHZ;
+    case NL80211_BAND_6GHZ:
+        return WLNK_CAP_BAND_6GHZ;
+    case NL80211_BAND_60GHZ:
+        return WLNK_CAP_BAND_60GHZ;
+    default:
+        return 0;
+    }
+}
+
+/** One radio's capabilities, gathered across the messages of a split dump. */
+struct wiphy_ctx {
+    /** The radio asked for. */
+    int32_t want;
+    /** Whether any message was about it. */
+    bool seen;
+    /** What it can do so far. */
+    wlnk_caps_t caps;
+};
+
+/**
+ * @brief Read the supported interface types: monitor, and so monitor TX.
+ * @param c Context to update.
+ * @param types NL80211_ATTR_SUPPORTED_IFTYPES.
+ */
+static void read_iftypes(struct wiphy_ctx *c, struct nlattr *types)
+{
+    struct nlattr *t;
+    int rem;
+    nla_for_each_nested(t, types, rem)
+    {
+        if (nla_type(t) == NL80211_IFTYPE_MONITOR)
+            c->caps.caps |= WLNK_CAP_MONITOR | WLNK_CAP_MONITOR_TX;
+    }
+}
+
+/**
+ * @brief Read the largest number of interfaces any combination allows.
+ * @param c Context to update.
+ * @param combs NL80211_ATTR_INTERFACE_COMBINATIONS.
+ */
+static void read_combinations(struct wiphy_ctx *c, struct nlattr *combs)
+{
+    struct nlattr *comb;
+    int rem;
+    nla_for_each_nested(comb, combs, rem)
+    {
+        struct nlattr *attrs[NUM_NL80211_IFACE_COMB];
+        if (nla_parse_nested(attrs, NUM_NL80211_IFACE_COMB - 1, comb, NULL) !=
+            0)
+            continue;
+        /* No policy is passed, so the length is checked here. */
+        if (attrs[NL80211_IFACE_COMB_MAXNUM] == NULL ||
+            nla_len(attrs[NL80211_IFACE_COMB_MAXNUM]) != sizeof(uint32_t))
+            continue;
+        uint32_t maxnum = nla_get_u32(attrs[NL80211_IFACE_COMB_MAXNUM]);
+        if (maxnum > c->caps.vif_budget)
+            c->caps.vif_budget = maxnum;
+    }
+}
+
+/**
+ * @brief Read the bands the radio supports.
+ * @param c Context to update.
+ * @param bands NL80211_ATTR_WIPHY_BANDS.
+ */
+static void read_bands(struct wiphy_ctx *c, struct nlattr *bands)
+{
+    struct nlattr *band;
+    int rem;
+    nla_for_each_nested(band, bands, rem)
+    {
+        c->caps.caps |= band_cap((uint32_t)nla_type(band));
+    }
+}
+
+/**
+ * @brief Split dump callback: add one message about the wanted radio.
+ * @param attrs Parsed message.
+ * @param user The wiphy_ctx.
+ * @return WLNK_OK.
+ */
+static int on_wiphy(wlnk_nl_attrs_t attrs, void *user)
+{
+    struct wiphy_ctx *c = user;
+    if (attrs[NL80211_ATTR_WIPHY] == NULL)
+        return WLNK_OK;
+    if ((int32_t)nla_get_u32(attrs[NL80211_ATTR_WIPHY]) != c->want)
+        return WLNK_OK; /* older kernels ignore the dump filter */
+    c->seen = true;
+
+    if (attrs[NL80211_ATTR_SUPPORTED_IFTYPES] != NULL)
+        read_iftypes(c, attrs[NL80211_ATTR_SUPPORTED_IFTYPES]);
+    /* NL80211_ATTR_SUPPORTED_COMMANDS is not the scan signal: the kernel
+     * builds that list from driver callbacks that do not include scanning,
+     * so a scanning radio still leaves TRIGGER_SCAN out of it. The number
+     * of SSIDs a scan may carry tracks the driver's scan support, and it is
+     * zero where there is none. */
+    if (attrs[NL80211_ATTR_MAX_NUM_SCAN_SSIDS] != NULL &&
+        nla_get_u8(attrs[NL80211_ATTR_MAX_NUM_SCAN_SSIDS]) > 0)
+        c->caps.caps |= WLNK_CAP_SCAN;
+    if (attrs[NL80211_ATTR_INTERFACE_COMBINATIONS] != NULL)
+        read_combinations(c, attrs[NL80211_ATTR_INTERFACE_COMBINATIONS]);
+    if (attrs[NL80211_ATTR_WIPHY_BANDS] != NULL)
+        read_bands(c, attrs[NL80211_ATTR_WIPHY_BANDS]);
+    return WLNK_OK;
+}
+
+/**
+ * @brief One radio's capabilities.
+ *
+ * The dump is requested split, as iw does: a modern radio's description
+ * does not fit one netlink message, and without splitting the kernel
+ * answers large radios with ENOBUFS. Its attributes then arrive spread
+ * over several messages, so they are accumulated.
+ *
+ * @param nl Open handle.
+ * @param wiphy The radio.
+ * @param out Receives its capabilities.
+ * @return WLNK_OK; WLNK_E_NOT_FOUND when the radio is gone.
+ */
+static int radio_caps(wlnk_nl_t *nl, int32_t wiphy, wlnk_caps_t *out)
+{
+    struct wiphy_ctx c = {.want = wiphy};
+    struct nl_msg *msg = wlnk_nl_msg(nl, NL80211_CMD_GET_WIPHY, true);
+    if (msg != NULL &&
+        (nla_put_u32(msg, NL80211_ATTR_WIPHY, (uint32_t)wiphy) != 0 ||
+         nla_put_flag(msg, NL80211_ATTR_SPLIT_WIPHY_DUMP) != 0)) {
+        nlmsg_free(msg);
+        msg = NULL;
+    }
+    int rc = wlnk_nl_run(nl, msg, on_wiphy, &c, "get wiphy");
+    if (rc != WLNK_OK)
+        return rc;
+    if (!c.seen)
+        return wlnk_fail(WLNK_E_NOT_FOUND, 0, "nl80211: no such radio");
+    *out = c.caps;
+    return WLNK_OK;
+}
+
+/**
+ * @brief Fill each row's radio capabilities, asking each radio once.
+ *
+ * A radio removed since the interface dump takes its rows with it. Any
+ * other failure fails the list: a row without capabilities would read as a
+ * radio that has none.
+ *
+ * @param nl Open handle.
+ * @param rows Rows to fill, compacted in place.
+ * @param n Number of rows; on return, the number kept.
+ * @return WLNK_OK or the failure's status.
+ */
+static int fill_radios(wlnk_nl_t *nl, wlnk_iface_t *rows, size_t *n)
+{
+    size_t kept = 0;
+    for (size_t i = 0; i < *n; i++) {
+        wlnk_iface_t row = rows[i];
+        size_t twin = 0;
+        while (twin < kept && rows[twin].wiphy != row.wiphy)
+            twin++;
+        if (twin < kept) {
+            row.radio = rows[twin].radio;
+        } else {
+            int rc = radio_caps(nl, row.wiphy, &row.radio);
+            if (rc == WLNK_E_NOT_FOUND)
+                continue;
+            if (rc != WLNK_OK)
+                return rc;
+        }
+        rows[kept++] = row;
+    }
+    *n = kept;
+    return WLNK_OK;
+}
+
 int wlnk_iface_list(wlnk_iface_t **out, size_t *n)
 {
     if (out != NULL)
@@ -242,10 +432,12 @@ int wlnk_iface_list(wlnk_iface_t **out, size_t *n)
     struct list_ctx c = {0};
     struct nl_msg *msg = wlnk_nl_msg(nl, NL80211_CMD_GET_INTERFACE, true);
     rc = wlnk_nl_run(nl, msg, on_iface, &c, "get interfaces");
+    if (rc == WLNK_OK)
+        rc = fill_radios(nl, c.rows, &c.n);
     wlnk_nl_close(&nl);
     if (rc != WLNK_OK || c.n == 0) {
         free(c.rows);
-        return rc;
+        return rc == WLNK_OK ? wlnk_ok() : rc;
     }
     *out = c.rows;
     *n = c.n;

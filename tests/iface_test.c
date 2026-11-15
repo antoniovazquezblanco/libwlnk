@@ -11,7 +11,8 @@
  * without a name fails too.
  *
  * Enumeration needs nl80211: without it that test skips, unless
- * WLNK_TEST_NL80211 is set (CI's simulated radios), which makes it fail.
+ * WLNK_TEST_NL80211 is set (CI's simulated radios), which makes it fail and
+ * also requires interfaces on monitor-capable radios with a band.
  */
 
 #include <stdarg.h>
@@ -28,6 +29,13 @@
 
 #define UNKNOWN "unknown"
 #define N(a)    (sizeof(a) / sizeof((a)[0]))
+
+/** Every capability bit the header defines. */
+#define ALL_CAPS ((WLNK_CAP_BAND_60GHZ << 1) - 1)
+/** The band bits. */
+#define BAND_CAPS                                                              \
+    (WLNK_CAP_BAND_2GHZ | WLNK_CAP_BAND_5GHZ | WLNK_CAP_BAND_6GHZ |            \
+     WLNK_CAP_BAND_60GHZ)
 
 typedef const char *(*namer_t)(uint32_t);
 
@@ -173,6 +181,19 @@ static void test_list_reports_interfaces(void **state)
         if (d->chan.freq_mhz == 0) /* not tuned: no channel at all */
             assert_true(d->chan.width == 0 && d->chan.center1_mhz == 0 &&
                         d->chan.center2_mhz == 0);
+
+        wlnk_capsmask_t have = d->radio.caps;
+        assert_int_equal(have & ~ALL_CAPS, 0);
+        assert_true(!(have & WLNK_CAP_MONITOR) ==
+                    !(have & WLNK_CAP_MONITOR_TX));
+        for (size_t j = 0; j < i; j++)
+            if (ifaces[j].wiphy == d->wiphy)
+                assert_memory_equal(&ifaces[j].radio, &d->radio,
+                                    sizeof(d->radio));
+        if (required) {
+            assert_true(have & WLNK_CAP_MONITOR);
+            assert_true(have & BAND_CAPS);
+        }
     }
     wlnk_iface_free(ifaces);
 }

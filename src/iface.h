@@ -98,7 +98,9 @@ typedef uint32_t wlnk_capsmask_t;
 
 /** Monitor interfaces can be created. */
 #define WLNK_CAP_MONITOR    (1u << 0)
-/** Frames can be transmitted on monitor interfaces. */
+/** Frames can be transmitted on monitor interfaces. nl80211 has no separate
+ * signal for it, so it follows WLNK_CAP_MONITOR; a driver may still refuse
+ * a frame. */
 #define WLNK_CAP_MONITOR_TX (1u << 1)
 /** Scanning is supported. */
 #define WLNK_CAP_SCAN       (1u << 2)
@@ -118,6 +120,17 @@ typedef uint32_t wlnk_capsmask_t;
  * or an unknown bit.
  */
 WLNK_API const char *wlnk_cap_str(wlnk_capsmask_t cap);
+
+/**
+ * @brief What a radio can do.
+ */
+typedef struct wlnk_caps {
+    /** WLNK_CAP_* bits. */
+    wlnk_capsmask_t caps;
+    /** Most interfaces the radio allows at once; 0 when the driver reports
+     * no interface combination. */
+    uint32_t vif_budget;
+} wlnk_caps_t;
 
 /** Frequency not usable here at all. */
 #define WLNK_FREQ_DISABLED (1u << 0)
@@ -153,13 +166,17 @@ typedef struct wlnk_iface {
     uint32_t kind;
     /** Current channel. All 0 when the interface is not tuned. */
     wlnk_chandef_t chan;
+    /** What its radio can do, the same for every interface on it. */
+    wlnk_caps_t radio;
 } wlnk_iface_t;
 
 /**
- * @brief Every wireless network interface, in the kernel's order.
+ * @brief Every wireless network interface, in the kernel's order, each with
+ * its radio's capabilities.
  *
  * Kernel entries that are no network interface (P2P-device, NAN) have no
- * name to capture on and are left out. Needs no privileges.
+ * name to capture on and are left out, and so are the interfaces of a radio
+ * removed while the call runs. Needs no privileges.
  *
  * @param out Receives a caller-owned array, NULL when there are none. Free
  * it with wlnk_iface_free().
