@@ -17,14 +17,19 @@ configure_file(
     'WLNK_VERSION_STRING': meson.project_version(),
   })
 
+# Dependencies
+nl_dep = dependency('libnl-3.0')
+
 # Library
 wlnk_src = files(
   'err.c',
   'iface.c',
+  'nl.c',
   'version.c',
 )
 
 wlnk_lib = library('wlnk', wlnk_src,
+  dependencies: nl_dep,
   version: wlnk_version_core,
   soversion: wlnk_version_parts[0],
   gnu_symbol_visibility: 'hidden',

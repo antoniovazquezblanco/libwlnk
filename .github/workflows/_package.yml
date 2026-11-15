@@ -24,7 +24,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config libcmocka-dev
+          sudo apt-get install -y ninja-build pkg-config libcmocka-dev \
+            libnl-3-dev
           pipx install meson
       - name: Derive the version
         id: version

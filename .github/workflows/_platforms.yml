@@ -23,21 +23,21 @@ jobs:
             install: >-
               apt-get update && apt-get install -y
               git meson ninja-build pkg-config build-essential
-              libcmocka-dev
+              libcmocka-dev libnl-3-dev
 
           - name: Kali
             image: kalilinux/kali-last-release
             install: >-
               apt-get update && apt-get install -y
               git meson ninja-build pkg-config build-essential
-              libcmocka-dev
+              libcmocka-dev libnl-3-dev
             optional: true
 
           - name: Alpine 3.22
             image: alpine:3.22
             install: >-
               apk add --no-cache
-              git build-base meson pkgconf cmocka-dev
+              git build-base meson pkgconf cmocka-dev libnl3-dev
 
     steps:
       - name: Install dependencies

@@ -48,6 +48,15 @@ test('wlnk_iface_test',
     'wlnk_iface_test', 'iface_test.c',
     dependencies: wlnk_test_deps))
 
+# Netlink tests
+# Internal: the libnl error mapper, through the library's own nl.c object.
+test('wlnk_nl_test',
+  executable(
+    'wlnk_nl_test', 'nl_test.c',
+    objects: wlnk_lib.extract_objects('nl.c'),
+    dependencies: [wlnk_dep.partial_dependency(includes: true), cmocka_dep,
+      nl_dep]))
+
 # Version tests
 test('wlnk_version_test',
   executable(
