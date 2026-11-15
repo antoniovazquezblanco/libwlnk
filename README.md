@@ -1,5 +1,6 @@
 # libwlnk
 
+[![CI](https://github.com/antoniovazquezblanco/libwlnk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/antoniovazquezblanco/libwlnk/actions/workflows/ci.yml)
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](LICENSE)
 
 A C library for controlling Linux Wi-Fi interfaces.
