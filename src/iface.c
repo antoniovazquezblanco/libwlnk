@@ -6,6 +6,7 @@
  * Interface enumeration and display names for interface values.
  */
 
+#include <linux/version.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -129,6 +130,40 @@ static uint32_t ifkind(uint32_t iftype)
     }
 }
 
+/**
+ * @brief An nl80211 channel width in the public numbering.
+ * @param nl_width NL80211_CHAN_WIDTH_* value.
+ * @return The WLNK_CHW_* width. Widths without one read as 20 MHz without
+ * HT, the conservative reading.
+ */
+static uint32_t chwidth(uint32_t nl_width)
+{
+    switch (nl_width) {
+    case NL80211_CHAN_WIDTH_20_NOHT:
+        return WLNK_CHW_20_NOHT;
+    case NL80211_CHAN_WIDTH_20:
+        return WLNK_CHW_20;
+    case NL80211_CHAN_WIDTH_40:
+        return WLNK_CHW_40;
+    case NL80211_CHAN_WIDTH_80:
+        return WLNK_CHW_80;
+    case NL80211_CHAN_WIDTH_80P80:
+        return WLNK_CHW_80P80;
+    case NL80211_CHAN_WIDTH_160:
+        return WLNK_CHW_160;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0)
+    case NL80211_CHAN_WIDTH_320: /* in the kernel headers since 5.18 */
+        return WLNK_CHW_320;
+#endif
+    case NL80211_CHAN_WIDTH_5:
+        return WLNK_CHW_5;
+    case NL80211_CHAN_WIDTH_10:
+        return WLNK_CHW_10;
+    default:
+        return WLNK_CHW_20_NOHT;
+    }
+}
+
 /** Interfaces gathered from one dump. */
 struct list_ctx {
     /** Entries so far. */
@@ -176,6 +211,17 @@ static int on_iface(wlnk_nl_attrs_t attrs, void *user)
     d->kind = attrs[NL80211_ATTR_IFTYPE] != NULL
                   ? ifkind(nla_get_u32(attrs[NL80211_ATTR_IFTYPE]))
                   : WLNK_IF_OTHER;
+
+    /* A channel is reported only while the interface is tuned. */
+    if (attrs[NL80211_ATTR_WIPHY_FREQ] == NULL)
+        return WLNK_OK;
+    d->chan.freq_mhz = nla_get_u32(attrs[NL80211_ATTR_WIPHY_FREQ]);
+    if (attrs[NL80211_ATTR_CHANNEL_WIDTH] != NULL)
+        d->chan.width = chwidth(nla_get_u32(attrs[NL80211_ATTR_CHANNEL_WIDTH]));
+    if (attrs[NL80211_ATTR_CENTER_FREQ1] != NULL)
+        d->chan.center1_mhz = nla_get_u32(attrs[NL80211_ATTR_CENTER_FREQ1]);
+    if (attrs[NL80211_ATTR_CENTER_FREQ2] != NULL)
+        d->chan.center2_mhz = nla_get_u32(attrs[NL80211_ATTR_CENTER_FREQ2]);
     return WLNK_OK;
 }
 

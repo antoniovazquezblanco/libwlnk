@@ -78,6 +78,20 @@ enum wlnk_chwidth {
 WLNK_API const char *wlnk_chwidth_str(uint32_t width);
 
 /**
+ * @brief A channel as nl80211 describes it. Frequencies in MHz.
+ */
+typedef struct wlnk_chandef {
+    /** Control (primary) channel. */
+    uint32_t freq_mhz;
+    /** Channel width, a WLNK_CHW_* value. */
+    uint32_t width;
+    /** Centre of the (first) segment, or 0 when not known. */
+    uint32_t center1_mhz;
+    /** Centre of the second segment (80+80 only), or 0. */
+    uint32_t center2_mhz;
+} wlnk_chandef_t;
+
+/**
  * @brief Radio capabilities, a mask of WLNK_CAP_* bits.
  */
 typedef uint32_t wlnk_capsmask_t;
@@ -137,6 +151,8 @@ typedef struct wlnk_iface {
     int32_t wiphy;
     /** Interface kind, a WLNK_IF_* value. */
     uint32_t kind;
+    /** Current channel. All 0 when the interface is not tuned. */
+    wlnk_chandef_t chan;
 } wlnk_iface_t;
 
 /**

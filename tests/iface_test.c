@@ -169,6 +169,10 @@ static void test_list_reports_interfaces(void **state)
         assert_true(d->ifname[0] != '\0');
         assert_true(d->wiphy >= 0);
         assert_true(d->kind <= WLNK_IF_OTHER);
+        assert_true(d->chan.width <= WLNK_CHW_10);
+        if (d->chan.freq_mhz == 0) /* not tuned: no channel at all */
+            assert_true(d->chan.width == 0 && d->chan.center1_mhz == 0 &&
+                        d->chan.center2_mhz == 0);
     }
     wlnk_iface_free(ifaces);
 }
