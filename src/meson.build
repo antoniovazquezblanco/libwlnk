@@ -1,1 +1,3 @@
 # libwlnk library
+
+subdir('util')

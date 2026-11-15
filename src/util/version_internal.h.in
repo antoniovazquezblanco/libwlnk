@@ -1,0 +1,17 @@
+/*
+ * SPDX-License-Identifier: BSD-3-Clause
+ * SPDX-FileCopyrightText: 2026 Antonio Vázquez Blanco
+ *
+ * version_internal.h
+ * Library version, generated from the Meson project version.
+ */
+
+#ifndef WLNK_UTIL_VERSION_INTERNAL_H
+#define WLNK_UTIL_VERSION_INTERNAL_H
+
+#define WLNK_VERSION_MAJOR  @WLNK_VERSION_MAJOR@
+#define WLNK_VERSION_MINOR  @WLNK_VERSION_MINOR@
+#define WLNK_VERSION_PATCH  @WLNK_VERSION_PATCH@
+#define WLNK_VERSION_STRING "@WLNK_VERSION_STRING@"
+
+#endif /* WLNK_UTIL_VERSION_INTERNAL_H */
