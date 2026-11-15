@@ -3,7 +3,7 @@
  * SPDX-FileCopyrightText: 2026 Antonio Vázquez Blanco
  *
  * err.h
- * Status codes.
+ * Status codes and error detail.
  */
 
 #ifndef WLNK_ERR_H
@@ -33,7 +33,7 @@ enum wlnk_status {
     WLNK_E_NO_MEMORY = 5,
     /** No such interface or radio, or no nl80211 in the kernel. */
     WLNK_E_NOT_FOUND = 6,
-    /** A system call failed. */
+    /** A system call failed. Its errno is wlnk_err_syserrno(). */
     WLNK_E_IO = 7,
     /** The operation timed out. */
     WLNK_E_TIMEOUT = 8,
@@ -53,6 +53,27 @@ enum wlnk_status {
  * @return Static message; "unknown status" for unknown codes.
  */
 WLNK_API const char *wlnk_strerr(int status);
+
+/**
+ * @brief errno behind the last failed wlnk call on this thread.
+ *
+ * Every wlnk call that returns a status records its outcome for the calling
+ * thread: cleared on success, filled on failure. Read it before the next
+ * such call on the same thread.
+ *
+ * @return The failing system call's errno, or 0 when there is none.
+ */
+WLNK_API int wlnk_err_syserrno(void);
+
+/**
+ * @brief Detail of the last failed wlnk call on this thread.
+ *
+ * Recorded as for wlnk_err_syserrno(). Not stable: match on the status.
+ *
+ * @return Human-readable detail, empty when there is none. Valid until the next
+ * wlnk call that returns a status on this thread.
+ */
+WLNK_API const char *wlnk_err_msg(void);
 
 #ifdef __cplusplus
 }

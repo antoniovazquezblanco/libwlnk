@@ -34,6 +34,14 @@ test('wlnk_err_test',
     'wlnk_err_test', 'err_test.c',
     dependencies: wlnk_test_deps))
 
+# Internal: the error detail helpers, through the library's own err.c object.
+test('wlnk_err_detail_test',
+  executable(
+    'wlnk_err_detail_test', 'err_detail_test.c',
+    objects: wlnk_lib.extract_objects('err.c'),
+    dependencies: [wlnk_dep.partial_dependency(includes: true), cmocka_dep,
+      dependency('threads')]))
+
 # Interface tests
 test('wlnk_iface_test',
   executable(
