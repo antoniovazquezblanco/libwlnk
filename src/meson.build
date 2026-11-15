@@ -51,5 +51,6 @@ wlnk_headers = files(
   'err.h',
   'iface.h',
   'version.h',
+  'wlnk.h',
 )
 install_headers(wlnk_headers, subdir: 'wlnk')

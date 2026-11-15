@@ -5,13 +5,12 @@
  * cxx_headers_test.cpp
  * Check that the public headers compile and link as C++.
  *
- * Every public function is referenced, so a header missing its extern "C"
- * guard fails at link time (mangled names). No library behavior runs.
+ * Every public function is referenced through wlnk.h alone, so a header it
+ * misses fails to compile, and one missing its extern "C" guard fails at
+ * link time (mangled names). No library behavior runs.
  */
 
-#include "err.h"
-#include "iface.h"
-#include "version.h"
+#include "wlnk.h"
 
 /** void (*)(void) is the cast target -Wcast-function-type accepts. */
 using wlnk_fn = void (*)();
