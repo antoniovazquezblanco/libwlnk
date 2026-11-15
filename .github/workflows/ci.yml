@@ -17,3 +17,8 @@ jobs:
   prechecks:
     name: Pre-checks
     uses: ./.github/workflows/_prechecks.yml
+
+  platforms:
+    name: Platforms
+    needs: prechecks
+    uses: ./.github/workflows/_platforms.yml
