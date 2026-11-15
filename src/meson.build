@@ -19,6 +19,7 @@ configure_file(
 
 # Library
 wlnk_src = files(
+  'err.c',
   'version.c',
 )
 
@@ -34,4 +35,4 @@ wlnk_dep = declare_dependency(
   include_directories: include_directories('.'))
 
 # Installation
-install_headers('api.h', 'version.h', subdir: 'wlnk')
+install_headers('api.h', 'err.h', 'version.h', subdir: 'wlnk')

@@ -11,6 +11,11 @@ endif
 wlnk_test_deps = [wlnk_dep, cmocka_dep]
 
 # Tests
+test('wlnk_err_test',
+  executable(
+    'wlnk_err_test', 'err_test.c',
+    dependencies: wlnk_test_deps))
+
 test('wlnk_version_test',
   executable(
     'wlnk_version_test', 'version_test.c',
