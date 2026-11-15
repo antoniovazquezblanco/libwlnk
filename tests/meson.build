@@ -86,7 +86,7 @@ test('wlnk_version_test',
 test('wlnk_vif_test',
   executable(
     'wlnk_vif_test', 'vif_test.c',
-    objects: wlnk_lib.extract_objects('vif.c', 'link.c', 'nl.c', 'iface.c',
-      'err.c'),
+    objects: wlnk_lib.extract_objects('vif.c', 'chandef.c', 'link.c', 'nl.c',
+      'iface.c', 'err.c'),
     dependencies: [wlnk_dep.partial_dependency(includes: true), cmocka_dep,
       nl_deps]))

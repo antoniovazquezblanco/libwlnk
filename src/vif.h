@@ -10,6 +10,7 @@
 #define WLNK_VIF_H
 
 #include <stdint.h>
+#include "iface.h"
 #include "nl.h"
 
 /**
@@ -38,5 +39,21 @@ int wlnk_vif_add_monitor(wlnk_nl_t *nl, int32_t wiphy, const char *name);
  * @return WLNK_OK; WLNK_E_PERM without the privilege.
  */
 int wlnk_vif_del(wlnk_nl_t *nl, const char *name);
+
+/**
+ * @brief Tune the radio behind an interface.
+ *
+ * Centres the channel leaves at 0 are resolved as wlnk_chandef_resolve()
+ * does. Needs CAP_NET_ADMIN.
+ *
+ * @param nl Open handle.
+ * @param name Interface name.
+ * @param cd Channel.
+ * @return WLNK_OK; WLNK_E_INVALID_ARG for an invalid or ambiguous channel,
+ * or one the radio refuses; WLNK_E_BUSY while a non-monitor interface on
+ * the radio is up; WLNK_E_PERM without the privilege.
+ */
+int wlnk_vif_set_channel(wlnk_nl_t *nl, const char *name,
+                         const wlnk_chandef_t *cd);
 
 #endif /* WLNK_VIF_H */
