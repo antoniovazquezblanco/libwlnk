@@ -19,3 +19,18 @@ jobs:
           sudo apt-get install -y clang-format-18
           git ls-files '*.c' '*.h' '*.cpp' |
             xargs clang-format-18 --dry-run --Werror
+
+  license:
+    name: Licensing
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Install reuse
+        run: pipx install reuse
+      - name: Source file licensing
+        run: |
+          git ls-files '*.c' '*.h' '*.cpp' '*.in' '*.sh' '*.py' |
+            xargs reuse lint-file
+      - name: REUSE compliance
+        run: reuse lint

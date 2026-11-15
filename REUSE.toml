@@ -1,0 +1,14 @@
+version = 1
+
+# Files that cannot carry an SPDX header.
+# Sources (.c, .h, .cpp, .in, .sh, .py) carry their own.
+[[annotations]]
+path = [
+  ".archive-version",
+  ".clang-format",
+  ".gitattributes",
+  ".github/**",
+  "README.md",
+]
+SPDX-FileCopyrightText = "2026 Antonio Vázquez Blanco"
+SPDX-License-Identifier = "BSD-3-Clause"
