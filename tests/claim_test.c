@@ -20,6 +20,7 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <net/if.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -86,6 +87,11 @@ static void test_needs_arguments(void **state)
     assert_int_equal(wlnk_release(NULL), WLNK_E_INVALID_ARG);
     assert_int_equal(wlnk_release(&h), WLNK_E_INVALID_ARG);
     assert_int_equal(wlnk_recover(NULL), WLNK_E_INVALID_ARG);
+
+    wlnk_vif_t *v = (wlnk_vif_t *)&dummy;
+    assert_int_equal(wlnk_claim_monitor(NULL, &v), WLNK_E_INVALID_ARG);
+    assert_null(v);
+    assert_null(wlnk_vif_ifname(NULL));
 }
 
 /** Only a wireless interface has a radio to claim or recover. */
@@ -100,7 +106,8 @@ static void test_not_a_radio(void **state)
 }
 
 /** Without privileges a claim that would take a link down is refused and
- * leaves nothing to recover; one with nothing to change needs none. */
+ * leaves nothing to recover; one with nothing to change needs none, but
+ * cannot create a monitor interface. */
 static void test_unprivileged_claim(void **state)
 {
     (void)state;
@@ -119,6 +126,9 @@ static void test_unprivileged_claim(void **state)
             assert_non_null(strstr(wlnk_err_msg(), "CAP_NET_ADMIN"));
         } else {
             assert_int_equal(rc, WLNK_OK);
+            wlnk_vif_t *v = NULL;
+            assert_int_equal(wlnk_claim_monitor(h, &v), WLNK_E_PERM);
+            assert_null(v);
             assert_int_equal(wlnk_release(&h), WLNK_OK);
         }
         assert_int_equal(is_up(ifname), up);
@@ -215,8 +225,40 @@ static void test_claim_leaves_the_rest(void **state)
         assert_int_equal(wlnk_if_set_up(other, other_was_up), WLNK_OK);
 }
 
+/** Monitor interfaces are created on the claimed radio and up, another for
+ * each call, and deleted at release. */
+static void test_monitor_interfaces(void **state)
+{
+    (void)state;
+    if (geteuid() != 0)
+        skip();
+    const char *ifname = test_iface_or_skip();
+    wlnk_iface_t d;
+    assert_int_equal(wlnk_iface_info(ifname, &d), WLNK_OK);
+
+    wlnk_claim_t *h = NULL;
+    assert_int_equal(wlnk_claim(ifname, &h), WLNK_OK);
+    wlnk_vif_t *v[2] = {NULL, NULL};
+    char names[2][WLNK_IFNAME_MAX];
+    for (int i = 0; i < 2; i++) {
+        assert_int_equal(wlnk_claim_monitor(h, &v[i]), WLNK_OK);
+        snprintf(names[i], sizeof(names[i]), "%s", wlnk_vif_ifname(v[i]));
+        wlnk_iface_t m;
+        assert_int_equal(wlnk_iface_info(names[i], &m), WLNK_OK);
+        assert_int_equal(m.kind, WLNK_IF_MONITOR);
+        assert_int_equal(m.wiphy, d.wiphy);
+        assert_true(is_up(names[i]));
+    }
+    assert_string_not_equal(names[0], names[1]);
+    assert_string_equal(wlnk_vif_ifname(v[0]), names[0]); /* still its own */
+
+    assert_int_equal(wlnk_release(&h), WLNK_OK);
+    assert_int_equal(if_nametoindex(names[0]), 0);
+    assert_int_equal(if_nametoindex(names[1]), 0);
+}
+
 /** The claim of a process that died is reported, never claimed over, until
- * it is recovered. */
+ * it is recovered, which also deletes its monitor interface. */
 static void test_dead_claim_is_recovered(void **state)
 {
     (void)state;
@@ -226,16 +268,31 @@ static void test_dead_claim_is_recovered(void **state)
     bool was_up = is_up(ifname);
     assert_int_equal(wlnk_if_set_up(ifname, true), WLNK_OK);
 
+    int fds[2];
+    assert_int_equal(pipe(fds), 0);
     pid_t child = fork();
     assert_true(child >= 0);
-    if (child == 0) {
+    if (child == 0) { /* claims, creates a monitor and dies with both */
+        close(fds[0]);
         wlnk_claim_t *h = NULL;
-        _exit(wlnk_claim(ifname, &h) == WLNK_OK ? 0 : 1); /* never released */
+        wlnk_vif_t *v = NULL;
+        bool ok = wlnk_claim(ifname, &h) == WLNK_OK &&
+                  wlnk_claim_monitor(h, &v) == WLNK_OK;
+        char name[WLNK_IFNAME_MAX] = "";
+        if (ok)
+            snprintf(name, sizeof(name), "%s", wlnk_vif_ifname(v));
+        ok = ok && write(fds[1], name, sizeof(name)) == (ssize_t)sizeof(name);
+        _exit(ok ? 0 : 1);
     }
+    close(fds[1]);
+    char mon[WLNK_IFNAME_MAX] = "";
+    assert_int_equal(read(fds[0], mon, sizeof(mon)), (ssize_t)sizeof(mon));
+    close(fds[0]);
     int status = 0;
     assert_int_equal(waitpid(child, &status, 0), child);
     assert_true(WIFEXITED(status) && WEXITSTATUS(status) == 0);
     assert_false(is_up(ifname));
+    assert_int_not_equal(if_nametoindex(mon), 0);
 
     wlnk_claim_t *h = NULL;
     assert_int_equal(wlnk_claim(ifname, &h), WLNK_E_STALE_STATE);
@@ -247,6 +304,7 @@ static void test_dead_claim_is_recovered(void **state)
 
     assert_int_equal(wlnk_recover(ifname), WLNK_OK);
     assert_true(is_up(ifname));
+    assert_int_equal(if_nametoindex(mon), 0);
     assert_int_equal(wlnk_claim(ifname, &h), WLNK_OK);
     assert_int_equal(wlnk_release(&h), WLNK_OK);
 
@@ -350,6 +408,7 @@ int main(void)
         cmocka_unit_test(test_unprivileged_claim),
         cmocka_unit_test(test_claim_and_release),
         cmocka_unit_test(test_claim_leaves_the_rest),
+        cmocka_unit_test(test_monitor_interfaces),
         cmocka_unit_test(test_dead_claim_is_recovered),
         cmocka_unit_test(test_blocked_radio_is_refused),
         cmocka_unit_test(test_recover_odd_records),

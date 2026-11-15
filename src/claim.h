@@ -21,6 +21,12 @@ extern "C" {
 typedef struct wlnk_claim wlnk_claim_t;
 
 /**
+ * @brief A monitor interface of a claim, from wlnk_claim_monitor() until
+ * the claim is released.
+ */
+typedef struct wlnk_vif wlnk_vif_t;
+
+/**
  * @brief Claim the radio behind an interface.
  *
  * The radio is what is claimed, so every interface on it is affected: each
@@ -43,8 +49,9 @@ WLNK_API int wlnk_claim(const char *ifname, wlnk_claim_t **h);
 /**
  * @brief Release a claim, putting its radio back as it was found.
  *
- * The claim is gone on return, even on failure: what could not be undone
- * stays recorded, for wlnk_recover().
+ * Its monitor interfaces are deleted, so close whatever captures on them
+ * first. The claim is gone on return, even on failure: what could not be
+ * undone stays recorded, for wlnk_recover().
  *
  * @param h The claim; NULL on return.
  * @return WLNK_OK; the first step that could not be undone otherwise.
@@ -64,6 +71,30 @@ WLNK_API int wlnk_release(wlnk_claim_t **h);
  * that could not be undone, which stays recorded for a retry.
  */
 WLNK_API int wlnk_recover(const char *ifname);
+
+/**
+ * @brief Create a monitor interface on the claimed radio.
+ *
+ * Each call creates another, as many as the radio has room for, all
+ * deleted when the claim is released.
+ *
+ * @param h The claim.
+ * @param vif Receives the interface, owned by the claim; NULL on failure.
+ * @return WLNK_OK; WLNK_E_VIF_LIMIT when the radio has no room for another;
+ * WLNK_E_PERM without CAP_NET_ADMIN.
+ */
+WLNK_API int wlnk_claim_monitor(wlnk_claim_t *h, wlnk_vif_t **vif);
+
+/**
+ * @brief Name of a claim's monitor interface, the one to capture on.
+ *
+ * It is an ordinary monitor interface: libpcap, a packet socket or any
+ * capture tool can use it.
+ *
+ * @param vif The interface.
+ * @return Its name, valid until the claim is released; NULL for NULL.
+ */
+WLNK_API const char *wlnk_vif_ifname(const wlnk_vif_t *vif);
 
 #ifdef __cplusplus
 }
