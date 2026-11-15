@@ -25,4 +25,15 @@
  */
 int wlnk_rundir_open(bool create, int *dfd);
 
+/**
+ * @brief Whether an open entry of the run directory is a plain file.
+ *
+ * Anything else, such as a FIFO or a hard link to some other file, was
+ * planted by another writer of the directory.
+ *
+ * @param fd The entry.
+ * @return True for a regular file with a single name.
+ */
+bool wlnk_rundir_is_plain(int fd);
+
 #endif /* WLNK_RUNDIR_H */

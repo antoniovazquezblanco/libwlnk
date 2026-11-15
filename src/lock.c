@@ -23,7 +23,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/file.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #include "err.h"
 
@@ -86,8 +85,7 @@ int wlnk_lock_take(const wlnk_radio_t *r, int *fd)
 
     /* Before anything is written: a hard link would point the write at a
      * file the directory's writer chose. */
-    struct stat st;
-    if (fstat(lock, &st) != 0 || !S_ISREG(st.st_mode) || st.st_nlink != 1) {
+    if (!wlnk_rundir_is_plain(lock)) {
         close(lock);
         return wlnk_fail(WLNK_E_IO, 0, UNSAFE_LOCK);
     }

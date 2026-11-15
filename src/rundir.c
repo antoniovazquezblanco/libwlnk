@@ -38,3 +38,9 @@ int wlnk_rundir_open(bool create, int *dfd)
                          "run directory: unsafe (not a plain directory)");
     return wlnk_fail_sys(wlnk_errno_status(e), e, "run directory: open");
 }
+
+bool wlnk_rundir_is_plain(int fd)
+{
+    struct stat st;
+    return fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_nlink == 1;
+}
