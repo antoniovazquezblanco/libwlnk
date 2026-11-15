@@ -26,3 +26,5 @@ add_project_arguments(cc.get_supported_arguments([
     '-Wundef',
     '-Wpointer-arith',
   ]), language: 'c')
+
+subdir('src')

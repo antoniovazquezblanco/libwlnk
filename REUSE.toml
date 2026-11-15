@@ -6,9 +6,11 @@ version = 1
 path = [
   ".archive-version",
   ".clang-format",
+  ".editorconfig",
   ".gitattributes",
   ".github/**",
   "README.md",
+  "**/meson.build",
 ]
 SPDX-FileCopyrightText = "2026 Antonio Vázquez Blanco"
 SPDX-License-Identifier = "BSD-3-Clause"
