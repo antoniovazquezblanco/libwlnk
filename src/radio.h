@@ -3,7 +3,7 @@
  * SPDX-FileCopyrightText: 2026 Antonio Vázquez Blanco
  *
  * radio.h
- * Radios and their identity.
+ * Radios: their identity and rfkill state.
  */
 
 #ifndef WLNK_RADIO_H
@@ -43,5 +43,17 @@ typedef struct wlnk_radio {
  * @return WLNK_OK; WLNK_E_NOT_FOUND when it is not a wireless interface.
  */
 int wlnk_radio_resolve(const char *ifname, wlnk_radio_t *out);
+
+/**
+ * @brief Whether a radio is blocked by rfkill. Needs no privileges.
+ *
+ * Read, never changed: unblocking is the decision of whoever runs the
+ * program, and a hard block is a physical switch.
+ *
+ * @param r The radio.
+ * @return WLNK_OK when it is usable or has no rfkill switch; WLNK_E_RF_KILL
+ * when it is hard or soft blocked.
+ */
+int wlnk_rfkill_check(const wlnk_radio_t *r);
 
 #endif /* WLNK_RADIO_H */

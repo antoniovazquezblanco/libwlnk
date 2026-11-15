@@ -3,7 +3,8 @@
  * SPDX-FileCopyrightText: 2026 Antonio Vázquez Blanco
  *
  * radio_test.c
- * Check how interfaces resolve to radios and how radios are named.
+ * Check how interfaces resolve to radios, how radios are named and how
+ * their rfkill state reads.
  *
  * Internal test. The library sources are rebuilt with sysfs pointed at
  * WLNK_SYSFS, a tree this test builds in the build directory, so the real
@@ -98,6 +99,25 @@ static void wireless(const char *ifname, const char *phy, const char *index)
 }
 
 /**
+ * @brief Give a phy an rfkill switch.
+ * @param phy Phy name.
+ * @param node Switch name.
+ * @param hard Hard block state, "0" or "1".
+ * @param soft Soft block state, "0" or "1".
+ */
+static void rfkill(const char *phy, const char *node, const char *hard,
+                   const char *soft)
+{
+    char path[128];
+    snprintf(path, sizeof(path), "class/ieee80211/%s/%s", phy, node);
+    mkdirs(path);
+    snprintf(path, sizeof(path), "class/ieee80211/%s/%s/hard", phy, node);
+    put(path, hard);
+    snprintf(path, sizeof(path), "class/ieee80211/%s/%s/soft", phy, node);
+    put(path, soft);
+}
+
+/**
  * @brief Build the test's sysfs tree.
  * @param state Unused.
  * @return 0.
@@ -108,11 +128,14 @@ static int build_sysfs(void **state)
     mkdirs("class/net/eth0"); /* not wireless: no phy80211 */
     wireless("wlan0", "phy0", "0");
     device_link("phy0", "../../../devices/pci0000:00/0000:02:00.0");
+    rfkill("phy0", "rfkill0", "0", "0");
     wireless("wlan1", "phy1", "1"); /* two phys on one USB device */
     device_link("phy1", "../../../devices/usb1/1-1/1-1.4/1-1.4:1.0");
+    rfkill("phy1", "rfkill1", "0", "1");
     wireless("wlan2", "phy2", "2");
     device_link("phy2", "../../../devices/usb1/1-1/1-1.4/1-1.4:1.0");
-    wireless("wlan3", "phy3", "3"); /* no device link, like hwsim */
+    rfkill("phy2", "rfkill2", "1", "0");
+    wireless("wlan3", "phy3", "3"); /* no device link nor rfkill switch */
     wireless("wlan4", "phy4", "4"); /* a bus name a file cannot carry */
     device_link("phy4", "../../../devices/odd/.odd bus*");
     return 0;
@@ -191,6 +214,47 @@ static void test_needs_arguments(void **state)
                      WLNK_E_INVALID_ARG);
 }
 
+/** A radio whose rfkill switch is off, that has none, or that sysfs does
+ * not show, is usable. */
+static void test_rfkill_unblocked(void **state)
+{
+    (void)state;
+    wlnk_radio_t r;
+
+    assert_int_equal(wlnk_radio_resolve("wlan0", &r), WLNK_OK);
+    assert_int_equal(wlnk_rfkill_check(&r), WLNK_OK);
+    assert_int_equal(wlnk_radio_resolve("wlan3", &r), WLNK_OK);
+    assert_int_equal(wlnk_rfkill_check(&r), WLNK_OK);
+    snprintf(r.phy, sizeof(r.phy), "wlnk-absent-phy");
+    assert_int_equal(wlnk_rfkill_check(&r), WLNK_OK);
+    assert_string_equal(wlnk_err_msg(), "");
+}
+
+/** A soft or a hard block is reported, and says which. */
+static void test_rfkill_blocked(void **state)
+{
+    (void)state;
+    wlnk_radio_t r;
+
+    assert_int_equal(wlnk_radio_resolve("wlan1", &r), WLNK_OK);
+    assert_int_equal(wlnk_rfkill_check(&r), WLNK_E_RF_KILL);
+    assert_string_equal(wlnk_err_msg(), "phy1: radio soft blocked (rfkill)");
+    assert_int_equal(wlnk_radio_resolve("wlan2", &r), WLNK_OK);
+    assert_int_equal(wlnk_rfkill_check(&r), WLNK_E_RF_KILL);
+    assert_string_equal(wlnk_err_msg(), "phy2: radio hard blocked (rfkill)");
+}
+
+/** No radio, or one that never resolved, is refused. */
+static void test_rfkill_needs_a_radio(void **state)
+{
+    (void)state;
+    wlnk_radio_t r;
+
+    assert_int_equal(wlnk_rfkill_check(NULL), WLNK_E_INVALID_ARG);
+    assert_int_equal(wlnk_radio_resolve("eth0", &r), WLNK_E_NOT_FOUND);
+    assert_int_equal(wlnk_rfkill_check(&r), WLNK_E_INVALID_ARG);
+}
+
 int main(void)
 {
     const struct CMUnitTest tests[] = {
@@ -200,6 +264,9 @@ int main(void)
         cmocka_unit_test(test_identity_is_a_safe_name),
         cmocka_unit_test(test_not_a_radio),
         cmocka_unit_test(test_needs_arguments),
+        cmocka_unit_test(test_rfkill_unblocked),
+        cmocka_unit_test(test_rfkill_blocked),
+        cmocka_unit_test(test_rfkill_needs_a_radio),
     };
     return cmocka_run_group_tests(tests, build_sysfs, NULL);
 }

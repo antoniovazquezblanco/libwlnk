@@ -3,7 +3,7 @@
  * SPDX-FileCopyrightText: 2026 Antonio Vázquez Blanco
  *
  * radio.c
- * Radios and their identity.
+ * Radios: their identity and rfkill state.
  *
  * The identity has to survive a driver reload, so it is the bus path of the
  * phy's device rather than the phy name or the wiphy index, both of which
@@ -200,4 +200,53 @@ int wlnk_radio_resolve(const char *ifname, wlnk_radio_t *out)
     }
     sanitize(out->id);
     return wlnk_ok();
+}
+
+/**
+ * @brief Whether an attribute of a phy's rfkill switch reads 1.
+ * @param phy Phy name.
+ * @param node The switch, as named in the phy's directory.
+ * @param attr "hard" or "soft".
+ * @return False when it reads 0 or cannot be read.
+ */
+static bool rfkill_flag(const char *phy, const char *node, const char *attr)
+{
+    /* Each part is bounded, so the path can be shown to fit. */
+    char path[512];
+    snprintf(path, sizeof(path), SYS_PHY "/%.64s/%.32s/%.4s", phy, node, attr);
+    char value[8];
+    return read_attr(path, value, sizeof(value)) && strcmp(value, "1") == 0;
+}
+
+int wlnk_rfkill_check(const wlnk_radio_t *r)
+{
+    if (r == NULL || r->phy[0] == '\0')
+        return wlnk_fail(WLNK_E_INVALID_ARG, 0, "rfkill: no radio");
+
+    char dir[PATH_MAX_LEN];
+    snprintf(dir, sizeof(dir), SYS_PHY "/%s", r->phy);
+    DIR *d = opendir(dir);
+    if (d == NULL)
+        return wlnk_ok(); /* no sysfs view: nothing to report */
+
+    bool hard = false;
+    bool soft = false;
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL) {
+        if (strncmp(e->d_name, "rfkill", 6) != 0)
+            continue;
+        hard = rfkill_flag(r->phy, e->d_name, "hard");
+        soft = rfkill_flag(r->phy, e->d_name, "soft");
+        break; /* one rfkill switch per phy */
+    }
+    closedir(d);
+
+    /* A radio with no rfkill switch reads as usable, which it is. */
+    if (!hard && !soft)
+        return wlnk_ok();
+
+    char msg[WLNK_ERR_MSG_MAX];
+    snprintf(msg, sizeof(msg), "%s: radio %s blocked (rfkill)", r->phy,
+             hard ? "hard" : "soft");
+    return wlnk_fail(WLNK_E_RF_KILL, 0, msg);
 }
