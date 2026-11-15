@@ -3,11 +3,12 @@
  * SPDX-FileCopyrightText: 2026 Antonio Vázquez Blanco
  *
  * nl_test.c
- * Check the libnl error mapper: libnl reports negative NLE_* codes of its
- * own, never errno.
+ * Check the netlink transport: the libnl error mapper (libnl reports
+ * negative NLE_* codes of its own, never errno) and opening the nl80211
+ * socket.
  *
- * Internal test: the mapper is pure, so this needs no socket and no
- * privileges.
+ * Internal test. Needs no privileges; where the kernel has no nl80211 the
+ * socket test reports itself skipped.
  */
 
 #include <stdarg.h>
@@ -60,12 +61,54 @@ static void test_non_failures(void **state)
     assert_int_equal(wlnk_nle_status(4096), WLNK_OK);
 }
 
+/** A missing output handle is refused before any socket is opened. */
+static void test_open_needs_handle(void **state)
+{
+    (void)state;
+
+    assert_int_equal(wlnk_nl_open(NULL), WLNK_E_INVALID_ARG);
+}
+
+/** Closing a missing or already closed handle is a no-op. */
+static void test_close_without_handle(void **state)
+{
+    (void)state;
+    wlnk_nl_t *h = NULL;
+
+    wlnk_nl_close(NULL);
+    wlnk_nl_close(&h);
+    assert_null(h);
+}
+
+/** Opening needs no privileges: it finds nl80211 or reports it missing.
+ * Closing clears the handle. */
+static void test_open_close(void **state)
+{
+    (void)state;
+    wlnk_nl_t *h = NULL;
+
+    int rc = wlnk_nl_open(&h);
+    if (rc == WLNK_E_NOT_FOUND) {
+        assert_null(h);
+        skip();
+    }
+    assert_int_equal(rc, WLNK_OK);
+    assert_non_null(h);
+    assert_string_equal(wlnk_err_msg(), "");
+
+    wlnk_nl_close(&h);
+    assert_null(h);
+}
+
 int main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_failures_map),
         cmocka_unit_test(test_unmapped_failures_are_io),
         cmocka_unit_test(test_non_failures),
+        cmocka_unit_test(test_open_needs_handle),
+        cmocka_unit_test(test_close_without_handle),
+        cmocka_unit_test(test_open_close),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

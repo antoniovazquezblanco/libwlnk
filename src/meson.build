@@ -18,7 +18,7 @@ configure_file(
   })
 
 # Dependencies
-nl_dep = dependency('libnl-3.0')
+nl_deps = [dependency('libnl-3.0'), dependency('libnl-genl-3.0')]
 
 # Library
 wlnk_src = files(
@@ -29,7 +29,7 @@ wlnk_src = files(
 )
 
 wlnk_lib = library('wlnk', wlnk_src,
-  dependencies: nl_dep,
+  dependencies: nl_deps,
   version: wlnk_version_core,
   soversion: wlnk_version_parts[0],
   gnu_symbol_visibility: 'hidden',
