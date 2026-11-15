@@ -25,10 +25,12 @@ wlnk_src = files(
   'chandef.c',
   'err.c',
   'iface.c',
+  'journal.c',
   'link.c',
   'lock.c',
   'nl.c',
   'radio.c',
+  'rundir.c',
   'version.c',
   'vif.c',
 )

@@ -29,40 +29,10 @@
 
 #include "err_internal.h"
 #include "lock.h"
-
-/* Where the locks are. Only the tests set it, to a directory of their own. */
-#ifndef WLNK_RUNDIR
-#define WLNK_RUNDIR "/run/wlnk"
-#endif
+#include "rundir.h"
 
 /** Message for a lock path that is not a plain file. */
 #define UNSAFE_LOCK "lock: unsafe lock file (not a plain file)"
-
-/**
- * @brief Open the run directory, creating it when missing.
- *
- * A deployment that wants it group-writable creates it itself (a tmpfiles.d
- * line); this only makes sure there is one.
- *
- * @param dfd Receives its descriptor.
- * @return WLNK_OK; WLNK_E_IO when it is not a plain directory.
- */
-static int open_rundir(int *dfd)
-{
-    if (mkdir(WLNK_RUNDIR, 0755) != 0 && errno != EEXIST) {
-        int e = errno;
-        return wlnk_fail_sys(wlnk_errno_status(e), e,
-                             "lock: create run directory");
-    }
-    *dfd = open(WLNK_RUNDIR, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
-    if (*dfd >= 0)
-        return wlnk_ok();
-    int e = errno;
-    if (e == ELOOP || e == ENOTDIR)
-        return wlnk_fail(WLNK_E_IO, 0,
-                         "lock: unsafe run directory (not a plain directory)");
-    return wlnk_fail_sys(wlnk_errno_status(e), e, "lock: open run directory");
-}
 
 /**
  * @brief The pid a lock's holder wrote in it.
@@ -88,7 +58,7 @@ int wlnk_lock_take(const wlnk_radio_t *r, int *fd)
         return wlnk_fail(WLNK_E_INVALID_ARG, 0, "lock: no radio");
 
     int dfd = -1;
-    int rc = open_rundir(&dfd);
+    int rc = wlnk_rundir_open(true, &dfd);
     if (rc != WLNK_OK)
         return rc;
 
