@@ -1,0 +1,40 @@
+name: Build and test
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    name: ${{ matrix.cc }} ${{ matrix.config }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { cc: gcc, config: default, extra: -Ddefault_library=both }
+          - { cc: gcc, config: static, extra: -Ddefault_library=static }
+          - { cc: gcc, config: sanitize, extra: '-Db_sanitize=address,undefined' }
+          - { cc: gcc, config: release, extra: -Dbuildtype=release -Db_ndebug=true }
+          - { cc: clang, config: default, extra: -Ddefault_library=both }
+          - { cc: clang, config: sanitize, extra: '-Db_sanitize=address,undefined -Db_lundef=false' }
+    env:
+      CC: ${{ matrix.cc }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang
+          pipx install meson
+      - name: Configure
+        run: meson setup build --werror ${{ matrix.extra }}
+      - name: Build
+        run: meson compile -C build
+      - name: Test
+        run: meson test -C build --print-errorlogs
