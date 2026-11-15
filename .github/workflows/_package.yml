@@ -1,0 +1,46 @@
+name: Packaging
+
+on:
+  workflow_call:
+    outputs:
+      version:
+        description: The version meson derived from git, as the tarball carries it.
+        value: ${{ jobs.dist.outputs.version }}
+
+permissions:
+  contents: read
+
+jobs:
+  dist:
+    name: Source distribution
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config libcmocka-dev
+          pipx install meson
+      - name: Derive the version
+        id: version
+        run: echo "version=$(sh ./meson_version.sh)" >> "$GITHUB_OUTPUT"
+      - name: Configure
+        run: meson setup build-dist
+      - name: Build the tarball
+        run: meson dist -C build-dist --formats xztar
+      - name: Checksum the tarball
+        run: |
+          ls -l build-dist/meson-dist/
+          sha256sum build-dist/meson-dist/*.tar.xz
+      - name: Upload the tarball
+        uses: actions/upload-artifact@v6
+        with:
+          name: dist
+          path: build-dist/meson-dist/*
+          if-no-files-found: error
+          retention-days: 14

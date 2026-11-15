@@ -27,3 +27,8 @@ jobs:
     name: Build and test
     needs: platforms
     uses: ./.github/workflows/_build-test.yml
+
+  packaging:
+    name: Packaging
+    needs: build-test
+    uses: ./.github/workflows/_package.yml
