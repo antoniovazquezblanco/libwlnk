@@ -3,10 +3,17 @@
  * SPDX-FileCopyrightText: 2026 Antonio Vázquez Blanco
  *
  * iface.c
- * Display names for interface values.
+ * Interface enumeration and display names for interface values.
  */
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "err.h"
 #include "iface.h"
+
+#include "err_internal.h"
+#include "nl.h"
 
 #define UNKNOWN "unknown"
 
@@ -92,4 +99,114 @@ const char *wlnk_freq_flag_str(uint32_t flag)
     default:
         return UNKNOWN; /* also zero and several bits at once */
     }
+}
+
+/**
+ * @brief An nl80211 interface type in the public numbering.
+ * @param iftype NL80211_IFTYPE_* value.
+ * @return The WLNK_IF_* kind; WLNK_IF_OTHER for types without one.
+ */
+static uint32_t ifkind(uint32_t iftype)
+{
+    switch (iftype) {
+    case NL80211_IFTYPE_STATION:
+        return WLNK_IF_STATION;
+    case NL80211_IFTYPE_AP:
+    case NL80211_IFTYPE_AP_VLAN:
+        return WLNK_IF_AP;
+    case NL80211_IFTYPE_MONITOR:
+        return WLNK_IF_MONITOR;
+    case NL80211_IFTYPE_P2P_CLIENT:
+    case NL80211_IFTYPE_P2P_GO:
+    case NL80211_IFTYPE_P2P_DEVICE:
+        return WLNK_IF_P2P;
+    case NL80211_IFTYPE_MESH_POINT:
+        return WLNK_IF_MESH;
+    case NL80211_IFTYPE_ADHOC:
+        return WLNK_IF_IBSS;
+    default:
+        return WLNK_IF_OTHER;
+    }
+}
+
+/** Interfaces gathered from one dump. */
+struct list_ctx {
+    /** Entries so far. */
+    wlnk_iface_t *rows;
+    /** Entries used. */
+    size_t n;
+    /** Entries allocated. */
+    size_t cap;
+};
+
+/**
+ * @brief Dump callback: keep one kernel entry if it is a network interface.
+ * @param attrs Parsed entry.
+ * @param user The list_ctx.
+ * @return WLNK_OK, or WLNK_E_NO_MEMORY when the list cannot grow.
+ */
+static int on_iface(wlnk_nl_attrs_t attrs, void *user)
+{
+    struct list_ctx *c = user;
+
+    /* P2P-device and NAN entries have no index or name. */
+    if (attrs[NL80211_ATTR_IFINDEX] == NULL ||
+        attrs[NL80211_ATTR_IFNAME] == NULL)
+        return WLNK_OK;
+
+    if (c->n == c->cap) {
+        size_t cap = c->cap != 0 ? c->cap * 2 : 8;
+        wlnk_iface_t *grown = realloc(c->rows, cap * sizeof(*grown));
+        if (grown == NULL)
+            return WLNK_E_NO_MEMORY;
+        c->rows = grown;
+        c->cap = cap;
+    }
+
+    wlnk_iface_t *d = &c->rows[c->n++];
+    memset(d, 0, sizeof(*d));
+    d->wiphy = -1;
+    snprintf(d->ifname, sizeof(d->ifname), "%s",
+             nla_get_string(attrs[NL80211_ATTR_IFNAME]));
+    if (attrs[NL80211_ATTR_MAC] != NULL &&
+        nla_len(attrs[NL80211_ATTR_MAC]) == WLNK_MAC_LEN)
+        memcpy(d->mac, nla_data(attrs[NL80211_ATTR_MAC]), WLNK_MAC_LEN);
+    if (attrs[NL80211_ATTR_WIPHY] != NULL)
+        d->wiphy = (int32_t)nla_get_u32(attrs[NL80211_ATTR_WIPHY]);
+    d->kind = attrs[NL80211_ATTR_IFTYPE] != NULL
+                  ? ifkind(nla_get_u32(attrs[NL80211_ATTR_IFTYPE]))
+                  : WLNK_IF_OTHER;
+    return WLNK_OK;
+}
+
+int wlnk_iface_list(wlnk_iface_t **out, size_t *n)
+{
+    if (out != NULL)
+        *out = NULL;
+    if (n != NULL)
+        *n = 0;
+    if (out == NULL || n == NULL)
+        return wlnk_fail(WLNK_E_INVALID_ARG, 0, "list: no output");
+
+    wlnk_nl_t *nl = NULL;
+    int rc = wlnk_nl_open(&nl);
+    if (rc != WLNK_OK)
+        return rc;
+
+    struct list_ctx c = {0};
+    struct nl_msg *msg = wlnk_nl_msg(nl, NL80211_CMD_GET_INTERFACE, true);
+    rc = wlnk_nl_run(nl, msg, on_iface, &c, "get interfaces");
+    wlnk_nl_close(&nl);
+    if (rc != WLNK_OK || c.n == 0) {
+        free(c.rows);
+        return rc;
+    }
+    *out = c.rows;
+    *n = c.n;
+    return wlnk_ok();
+}
+
+void wlnk_iface_free(wlnk_iface_t *ifaces)
+{
+    free(ifaces);
 }

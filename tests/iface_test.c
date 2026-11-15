@@ -3,12 +3,15 @@
  * SPDX-FileCopyrightText: 2026 Antonio Vázquez Blanco
  *
  * iface_test.c
- * The display-name helpers of iface.h.
+ * Interface enumeration and the display-name helpers of iface.h.
  *
  * The names are part of the contract, so each one is pinned here: a
  * reworded name fails until this table is updated on purpose. The first
  * value past each table must be "unknown", so a value added to a header
  * without a name fails too.
+ *
+ * Enumeration needs nl80211: without it that test skips, unless
+ * WLNK_TEST_NL80211 is set (CI's simulated radios), which makes it fail.
  */
 
 #include <stdarg.h>
@@ -18,6 +21,9 @@
 #include <cmocka.h>
 
 #include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+#include "err.h"
 #include "iface.h"
 
 #define UNKNOWN "unknown"
@@ -118,6 +124,55 @@ static void test_bit_helpers_name_one_bit(void **state)
                         UNKNOWN);
 }
 
+/** Missing outputs are refused, and the output that was given is cleared. */
+static void test_list_needs_outputs(void **state)
+{
+    (void)state;
+    wlnk_iface_t dummy;
+    wlnk_iface_t *ifaces = &dummy;
+    size_t n = 7;
+
+    assert_int_equal(wlnk_iface_list(&ifaces, NULL), WLNK_E_INVALID_ARG);
+    assert_null(ifaces);
+    assert_true(wlnk_err_msg()[0] != '\0');
+    assert_int_equal(wlnk_iface_list(NULL, &n), WLNK_E_INVALID_ARG);
+    assert_int_equal(n, 0);
+}
+
+/** Freeing nothing is a no-op. */
+static void test_free_null(void **state)
+{
+    (void)state;
+    wlnk_iface_free(NULL);
+}
+
+/** Enumeration needs no privileges and reports well-formed entries; with
+ * CI's simulated radios there is at least one. */
+static void test_list_reports_interfaces(void **state)
+{
+    (void)state;
+    bool required = getenv("WLNK_TEST_NL80211") != NULL;
+    wlnk_iface_t *ifaces = NULL;
+    size_t n = 0;
+
+    int rc = wlnk_iface_list(&ifaces, &n);
+    if (rc == WLNK_E_NOT_FOUND && !required)
+        skip();
+    if (rc != WLNK_OK)
+        fail_msg("%s: %s", wlnk_strerr(rc), wlnk_err_msg());
+    assert_true((ifaces == NULL) == (n == 0));
+    if (required)
+        assert_true(n > 0);
+    for (size_t i = 0; i < n; i++) {
+        const wlnk_iface_t *d = &ifaces[i];
+        assert_non_null(memchr(d->ifname, '\0', sizeof(d->ifname)));
+        assert_true(d->ifname[0] != '\0');
+        assert_true(d->wiphy >= 0);
+        assert_true(d->kind <= WLNK_IF_OTHER);
+    }
+    wlnk_iface_free(ifaces);
+}
+
 int main(void)
 {
     const struct CMUnitTest tests[] = {
@@ -126,6 +181,9 @@ int main(void)
         cmocka_unit_test(test_cap_names),
         cmocka_unit_test(test_freq_flag_names),
         cmocka_unit_test(test_bit_helpers_name_one_bit),
+        cmocka_unit_test(test_list_needs_outputs),
+        cmocka_unit_test(test_free_null),
+        cmocka_unit_test(test_list_reports_interfaces),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

@@ -3,12 +3,14 @@
  * SPDX-FileCopyrightText: 2026 Antonio Vázquez Blanco
  *
  * iface.h
- * Interface kinds, channel widths, capabilities and frequency flags.
+ * Interface enumeration, kinds, channel widths, capabilities and frequency
+ * flags.
  */
 
 #ifndef WLNK_IFACE_H
 #define WLNK_IFACE_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include "api.h"
 
@@ -117,6 +119,44 @@ WLNK_API const char *wlnk_cap_str(wlnk_capsmask_t cap);
  * an unknown bit.
  */
 WLNK_API const char *wlnk_freq_flag_str(uint32_t flag);
+
+/** Size of wlnk_iface_t::ifname: the kernel's IFNAMSIZ, NUL included. */
+#define WLNK_IFNAME_MAX 16
+/** Size of wlnk_iface_t::mac. */
+#define WLNK_MAC_LEN    6
+
+/**
+ * @brief One wireless network interface.
+ */
+typedef struct wlnk_iface {
+    /** Interface name, NUL-terminated. */
+    char ifname[WLNK_IFNAME_MAX];
+    /** MAC address. */
+    uint8_t mac[WLNK_MAC_LEN];
+    /** nl80211 index of the radio, shared by every interface on it. */
+    int32_t wiphy;
+    /** Interface kind, a WLNK_IF_* value. */
+    uint32_t kind;
+} wlnk_iface_t;
+
+/**
+ * @brief Every wireless network interface, in the kernel's order.
+ *
+ * Kernel entries that are no network interface (P2P-device, NAN) have no
+ * name to capture on and are left out. Needs no privileges.
+ *
+ * @param out Receives a caller-owned array, NULL when there are none. Free
+ * it with wlnk_iface_free().
+ * @param n Receives the number of entries.
+ * @return WLNK_OK; WLNK_E_NOT_FOUND when the kernel has no nl80211.
+ */
+WLNK_API int wlnk_iface_list(wlnk_iface_t **out, size_t *n);
+
+/**
+ * @brief Free a wlnk_iface_list() result.
+ * @param ifaces Array to free; NULL is a no-op.
+ */
+WLNK_API void wlnk_iface_free(wlnk_iface_t *ifaces);
 
 #ifdef __cplusplus
 }
