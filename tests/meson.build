@@ -34,6 +34,12 @@ test('wlnk_err_test',
     'wlnk_err_test', 'err_test.c',
     dependencies: wlnk_test_deps))
 
+# Interface tests
+test('wlnk_iface_test',
+  executable(
+    'wlnk_iface_test', 'iface_test.c',
+    dependencies: wlnk_test_deps))
+
 # Version tests
 test('wlnk_version_test',
   executable(

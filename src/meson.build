@@ -20,6 +20,7 @@ configure_file(
 # Library
 wlnk_src = files(
   'err.c',
+  'iface.c',
   'version.c',
 )
 
@@ -38,6 +39,7 @@ wlnk_dep = declare_dependency(
 wlnk_headers = files(
   'api.h',
   'err.h',
+  'iface.h',
   'version.h',
 )
 install_headers(wlnk_headers, subdir: 'wlnk')

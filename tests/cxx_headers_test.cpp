@@ -10,6 +10,7 @@
  */
 
 #include "err.h"
+#include "iface.h"
 #include "version.h"
 
 /* void (*)(void) is the cast target -Wcast-function-type accepts. */
@@ -20,6 +21,10 @@ using wlnk_fn = void (*)();
 extern const wlnk_fn wlnk_cxx_fns[];
 const wlnk_fn wlnk_cxx_fns[] = {
     reinterpret_cast<wlnk_fn>(&wlnk_strerr),
+    reinterpret_cast<wlnk_fn>(&wlnk_ifkind_str),
+    reinterpret_cast<wlnk_fn>(&wlnk_chwidth_str),
+    reinterpret_cast<wlnk_fn>(&wlnk_cap_str),
+    reinterpret_cast<wlnk_fn>(&wlnk_freq_flag_str),
     reinterpret_cast<wlnk_fn>(&wlnk_version),
     reinterpret_cast<wlnk_fn>(&wlnk_version_string),
 };
