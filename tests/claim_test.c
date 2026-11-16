@@ -92,6 +92,8 @@ static void test_needs_arguments(void **state)
     assert_int_equal(wlnk_claim_monitor(NULL, &v), WLNK_E_INVALID_ARG);
     assert_null(v);
     assert_null(wlnk_vif_ifname(NULL));
+    wlnk_chandef_t cd = {.freq_mhz = 2412};
+    assert_int_equal(wlnk_set_channel(NULL, &cd), WLNK_E_INVALID_ARG);
 }
 
 /** Only a wireless interface has a radio to claim or recover. */
@@ -257,6 +259,64 @@ static void test_monitor_interfaces(void **state)
     assert_int_equal(if_nametoindex(names[1]), 0);
 }
 
+/**
+ * @brief The first frequencies of a radio that may be tuned to freely.
+ * @param ifname Interface on the radio.
+ * @param out Receives them.
+ * @param max Room in @p out.
+ * @return How many were found.
+ */
+static size_t usable_freqs(const char *ifname, uint32_t *out, size_t max)
+{
+    wlnk_freq_t *freqs = NULL;
+    size_t n = 0;
+    size_t found = 0;
+
+    assert_int_equal(wlnk_freq_list(ifname, &freqs, &n), WLNK_OK);
+    for (size_t i = 0; i < n && found < max; i++)
+        if ((freqs[i].flags &
+             (WLNK_FREQ_DISABLED | WLNK_FREQ_NO_IR | WLNK_FREQ_RADAR)) == 0)
+            out[found++] = freqs[i].freq_mhz;
+    wlnk_freq_free(freqs);
+    return found;
+}
+
+/** A radio whose links were up is tuned through the claim's monitor
+ * interface, since the claim took those links down. */
+static void test_tune_through_the_claim(void **state)
+{
+    (void)state;
+    if (geteuid() != 0)
+        skip();
+    const char *ifname = test_iface_or_skip();
+    bool was_up = is_up(ifname);
+    uint32_t freqs[2];
+    size_t n = usable_freqs(ifname, freqs, 2);
+    assert_true(n > 0);
+    assert_int_equal(wlnk_if_set_up(ifname, true), WLNK_OK);
+
+    wlnk_claim_t *h = NULL;
+    wlnk_vif_t *v = NULL;
+    assert_int_equal(wlnk_claim(ifname, &h), WLNK_OK);
+    assert_int_equal(wlnk_claim_monitor(h, &v), WLNK_OK);
+    for (size_t i = 0; i < n; i++) {
+        wlnk_chandef_t cd = {.freq_mhz = freqs[i]};
+        int rc = wlnk_set_channel(v, &cd);
+        if (rc != WLNK_OK)
+            fail_msg("%u MHz: %s: %s", (unsigned)freqs[i], wlnk_strerr(rc),
+                     wlnk_err_msg());
+        wlnk_iface_t m;
+        assert_int_equal(wlnk_iface_info(wlnk_vif_ifname(v), &m), WLNK_OK);
+        assert_int_equal(m.chan.freq_mhz, freqs[i]);
+    }
+    wlnk_chandef_t ambiguous = {.freq_mhz = 2437, .width = WLNK_CHW_40};
+    assert_int_equal(wlnk_set_channel(v, &ambiguous), WLNK_E_INVALID_ARG);
+    assert_int_equal(wlnk_set_channel(v, NULL), WLNK_E_INVALID_ARG);
+
+    assert_int_equal(wlnk_release(&h), WLNK_OK);
+    assert_int_equal(wlnk_if_set_up(ifname, was_up), WLNK_OK);
+}
+
 /** The claim of a process that died is reported, never claimed over, until
  * it is recovered, which also deletes its monitor interface. */
 static void test_dead_claim_is_recovered(void **state)
@@ -409,6 +469,7 @@ int main(void)
         cmocka_unit_test(test_claim_and_release),
         cmocka_unit_test(test_claim_leaves_the_rest),
         cmocka_unit_test(test_monitor_interfaces),
+        cmocka_unit_test(test_tune_through_the_claim),
         cmocka_unit_test(test_dead_claim_is_recovered),
         cmocka_unit_test(test_blocked_radio_is_refused),
         cmocka_unit_test(test_recover_odd_records),

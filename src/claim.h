@@ -10,6 +10,7 @@
 #define WLNK_CLAIM_H
 
 #include "api.h"
+#include "iface.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -95,6 +96,22 @@ WLNK_API int wlnk_claim_monitor(wlnk_claim_t *h, wlnk_vif_t **vif);
  * @return Its name, valid until the claim is released; NULL for NULL.
  */
 WLNK_API const char *wlnk_vif_ifname(const wlnk_vif_t *vif);
+
+/**
+ * @brief Tune the claimed radio, through one of its monitor interfaces.
+ *
+ * Every interface on a radio shares its channel, so this tunes them all.
+ * mac80211 only tunes a monitor while the radio's other links are down,
+ * which the claim saw to. Release does not put the channel back.
+ *
+ * @param vif A monitor interface of the claim.
+ * @param cd The channel. Centres left at 0 are filled in where exactly one
+ * placement fits.
+ * @return WLNK_OK; WLNK_E_INVALID_ARG for an invalid or ambiguous channel,
+ * or one the radio refuses; WLNK_E_BUSY when a link on the radio was
+ * brought back up behind the claim; WLNK_E_PERM without CAP_NET_ADMIN.
+ */
+WLNK_API int wlnk_set_channel(wlnk_vif_t *vif, const wlnk_chandef_t *cd);
 
 #ifdef __cplusplus
 }

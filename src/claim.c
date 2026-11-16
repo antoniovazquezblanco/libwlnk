@@ -40,6 +40,8 @@
 struct wlnk_vif {
     /** Its name. */
     char ifname[WLNK_IFNAME_MAX];
+    /** The claim it belongs to. */
+    wlnk_claim_t *claim;
 };
 
 /** A claim. */
@@ -249,6 +251,7 @@ int wlnk_claim_monitor(wlnk_claim_t *h, wlnk_vif_t **vif)
         rc = wlnk_vif_add_monitor(h->nl, h->radio.wiphy, v->ifname);
     if (rc != WLNK_OK)
         return rc;
+    v->claim = h;
     h->n_vifs++;
     *vif = v;
     return wlnk_ok();
@@ -257,4 +260,11 @@ int wlnk_claim_monitor(wlnk_claim_t *h, wlnk_vif_t **vif)
 const char *wlnk_vif_ifname(const wlnk_vif_t *vif)
 {
     return vif != NULL ? vif->ifname : NULL;
+}
+
+int wlnk_set_channel(wlnk_vif_t *vif, const wlnk_chandef_t *cd)
+{
+    if (vif == NULL)
+        return wlnk_fail(WLNK_E_INVALID_ARG, 0, "channel: no interface");
+    return wlnk_vif_set_channel(vif->claim->nl, vif->ifname, cd);
 }
