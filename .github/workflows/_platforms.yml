@@ -24,6 +24,7 @@ jobs:
               apt-get update && apt-get install -y
               git meson ninja-build pkg-config build-essential
               libcmocka-dev libnl-3-dev libnl-genl-3-dev
+            extra: -Dtools=disabled
 
           - name: Kali
             image: kalilinux/kali-last-release
@@ -57,4 +58,4 @@ jobs:
           echo "distro: $(meson --version)"
 
       - name: Configure
-        run: meson setup build
+        run: meson setup build ${{ matrix.extra }}

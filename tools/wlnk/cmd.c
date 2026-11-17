@@ -20,14 +20,18 @@ int cmd_fail(arg_dstr_t res, const char *what, int rc)
     return WLNK_EXIT_LIBRARY;
 }
 
+int cmd_oom(arg_dstr_t res)
+{
+    arg_dstr_cat(res, "wlnk: out of memory\n");
+    return WLNK_EXIT_LIBRARY;
+}
+
 int cmd_parse(int argc, char **argv, void **argtable, arg_end_t *end,
               arg_lit_t *help, arg_dstr_t res, const char *name,
               const char *summary)
 {
-    if (arg_nullcheck(argtable) != 0) {
-        arg_dstr_cat(res, "wlnk: out of memory\n");
-        return WLNK_EXIT_LIBRARY;
-    }
+    if (arg_nullcheck(argtable) != 0)
+        return cmd_oom(res);
     if (arg_parse(argc, argv, argtable) > 0) {
         arg_print_errors_ds(res, end, "wlnk");
         arg_dstr_catf(res, "Try 'wlnk %s --help'.\n", name);

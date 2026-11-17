@@ -26,6 +26,13 @@
 int cmd_fail(arg_dstr_t res, const char *what, int rc);
 
 /**
+ * @brief Report running out of memory.
+ * @param res Output.
+ * @return WLNK_EXIT_LIBRARY.
+ */
+int cmd_oom(arg_dstr_t res);
+
+/**
  * @brief Parse a subcommand's own arguments, answering --help.
  * @param argc Its argument count.
  * @param argv Its arguments, its name first.
