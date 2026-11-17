@@ -23,7 +23,7 @@ jobs:
             install: >-
               apt-get update && apt-get install -y
               git meson ninja-build pkg-config build-essential
-              libcmocka-dev libnl-3-dev libnl-genl-3-dev
+              libcmocka-dev libnl-3-dev libnl-genl-3-dev libsystemd-dev
             extra: -Dtools=disabled
 
           - name: Kali
@@ -31,7 +31,7 @@ jobs:
             install: >-
               apt-get update && apt-get install -y
               git meson ninja-build pkg-config build-essential
-              libcmocka-dev libnl-3-dev libnl-genl-3-dev
+              libcmocka-dev libnl-3-dev libnl-genl-3-dev libsystemd-dev
             optional: true
 
           - name: Alpine 3.22

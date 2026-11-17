@@ -19,6 +19,7 @@ configure_file(
 
 # Dependencies
 nl_deps = [dependency('libnl-3.0'), dependency('libnl-genl-3.0')]
+sdbus_dep = dependency('libsystemd', required: get_option('networkmanager'))
 
 # Library
 wlnk_src = files(
@@ -35,9 +36,12 @@ wlnk_src = files(
   'version.c',
   'vif.c',
 )
+if sdbus_dep.found()
+  wlnk_src += files('nm.c')
+endif
 
 wlnk_lib = library('wlnk', wlnk_src,
-  dependencies: nl_deps,
+  dependencies: [nl_deps, sdbus_dep],
   version: wlnk_version_core,
   soversion: wlnk_version_parts[0],
   gnu_symbol_visibility: 'hidden',

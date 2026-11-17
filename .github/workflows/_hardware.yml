@@ -8,8 +8,17 @@ permissions:
 
 jobs:
   hwsim:
-    name: mac80211_hwsim
+    name: ${{ matrix.name }}
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: mac80211_hwsim
+          - name: mac80211_hwsim, NetworkManager
+            owner: NetworkManager
+            packages: network-manager
+            tests: wlnk_nm_test
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -19,7 +28,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config libcmocka-dev \
-            libnl-3-dev libnl-genl-3-dev
+            libnl-3-dev libnl-genl-3-dev libsystemd-dev ${{ matrix.packages }}
           pipx install meson
       - name: Load the simulated radios
         run: |
@@ -38,11 +47,27 @@ jobs:
           else
             echo "::warning title=No simulated radio::mac80211_hwsim is unavailable for kernel $(uname -r); the netlink tests will skip."
           fi
+      - name: Let NetworkManager manage the simulated radios
+        if: matrix.owner == 'NetworkManager' && env.WLNK_TEST_IFACE != ''
+        run: |
+          # Wi-Fi only: the runner's own network is left where it is.
+          printf '[keyfile]\nunmanaged-devices=*,except:type:wifi\n' |
+            sudo tee /etc/NetworkManager/conf.d/90-wlnk-ci.conf
+          sudo systemctl restart NetworkManager
+          for _ in $(seq 30); do
+            case "$(nmcli -g GENERAL.STATE device show "$WLNK_TEST_IFACE" 2>/dev/null)" in
+              '' | '10 '*) sleep 1 ;;
+              *) echo "WLNK_TEST_NM=1" >> "$GITHUB_ENV"; exit 0 ;;
+            esac
+          done
+          nmcli device status
+          echo "::error title=Not managed::NetworkManager does not manage $WLNK_TEST_IFACE."
+          exit 1
       - name: Configure
         run: meson setup build --werror
       - name: Build
         run: meson compile -C build
       - name: Test
-        run: meson test -C build --print-errorlogs
+        run: meson test -C build --print-errorlogs ${{ matrix.tests }}
       - name: Test as root
-        run: sudo -E env "PATH=$PATH" meson test -C build --print-errorlogs
+        run: sudo -E env "PATH=$PATH" meson test -C build --print-errorlogs ${{ matrix.tests }}

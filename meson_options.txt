@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # SPDX-FileCopyrightText: 2026 Antonio Vázquez Blanco
 
+# NetworkManager via systemd
+option('networkmanager',
+  type: 'feature',
+  value: 'auto',
+  description: 'NetworkManager support (libsystemd)')
+
 # Unit tests
 option('tests',
   type: 'feature',
