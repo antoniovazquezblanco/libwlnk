@@ -6,3 +6,9 @@ option('tests',
   type: 'feature',
   value: 'enabled',
   description: 'Build the unit tests (needs cmocka)')
+
+# Tools
+option('tools',
+  type: 'feature',
+  value: 'enabled',
+  description: 'Build the wlnk command-line tools')
