@@ -6,8 +6,8 @@
  * NetworkManager's hold on interfaces.
  */
 
-#ifndef WLNK_NM_H
-#define WLNK_NM_H
+#ifndef WLNK_MANAGERS_NM_H
+#define WLNK_MANAGERS_NM_H
 
 #include <stdbool.h>
 
@@ -33,4 +33,4 @@ int wlnk_nm_is_managed(const char *ifname, bool *managed);
  */
 int wlnk_nm_set_managed(const char *ifname, bool managed);
 
-#endif /* WLNK_NM_H */
+#endif /* WLNK_MANAGERS_NM_H */

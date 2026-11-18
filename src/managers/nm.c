@@ -18,7 +18,7 @@
 #include "err.h"
 
 #include "err_internal.h"
-#include "nm.h"
+#include "managers/nm.h"
 
 /** NetworkManager's bus name, also the interface of its main object. */
 #define NM_NAME     "org.freedesktop.NetworkManager"

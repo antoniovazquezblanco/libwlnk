@@ -37,7 +37,7 @@ wlnk_src = files(
   'vif.c',
 )
 if sdbus_dep.found()
-  wlnk_src += files('nm.c')
+  wlnk_src += files('managers/nm.c')
 endif
 
 wlnk_lib = library('wlnk', wlnk_src,

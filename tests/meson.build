@@ -105,7 +105,7 @@ if sdbus_dep.found()
   test('wlnk_nm_test',
     executable(
       'wlnk_nm_test', 'nm_test.c',
-      objects: wlnk_lib.extract_objects('nm.c', 'err.c'),
+      objects: wlnk_lib.extract_objects('managers/nm.c', 'err.c'),
       dependencies: [wlnk_dep.partial_dependency(includes: true), cmocka_dep,
         sdbus_dep]),
     is_parallel: false)

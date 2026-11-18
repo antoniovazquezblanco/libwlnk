@@ -23,7 +23,7 @@
 #include <unistd.h>
 #include "err.h"
 
-#include "nm.h"
+#include "managers/nm.h"
 
 /** An interface name no machine has. */
 #define ABSENT "wlnk-absent0"
